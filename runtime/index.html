@@ -832,7 +832,9 @@
           pinStartedAt = 0;       // 本轮结束，下一轮重新计时
           hidePinnedRunning();
         } else if (data.state === 'working' || data.state === 'thinking') {
-          // 常驻气泡负责「还在跑」，这条负责「在跑什么」，两者互不顶替
+          // 常驻气泡负责「还在跑」，这条负责「在跑什么」，两者互不顶替。
+          // 这里也点亮常驻气泡：HUD 若在本轮中途重启过，就靠 working/thinking 把状态补回来。
+          showPinnedRunning();
           const isThinking = data.state === 'thinking';
           createMessage({
             badgeType: isThinking ? 'thinking' : 'working',

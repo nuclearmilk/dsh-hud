@@ -34,7 +34,7 @@
 想钉死版本（推荐写进 issue、教程、给别人复现时用）——用 tag 或 commit hash：
 
 ```
-https://github.com/nuclearmilk/dsh-hud#v1.4.1
+https://github.com/nuclearmilk/dsh-hud#v1.4.2
 ```
 
 ```
@@ -79,7 +79,7 @@ dsh plugin --profile tui add link:/path/to/dsh-hud
 | --- | --- | --- |
 | 安装时提示 spec 无效 | 输入框里留了模板文本 | 只保留 `https://github.com/nuclearmilk/dsh-hud` |
 | `could not read Username` / 403 | 仓库不可公开访问 | 必须用公开仓库；私有仓库的 git 安装需要配置凭据 |
-| 升级到 1.1.0 后出现两个气泡窗口 | 旧版本 spawn 的独立窗口还没退 | 新版本会自动向旧实例发 `/api/quit`；若仍在，结束任务管理器里的 `electron.exe` 后重启 DSH |
+| 升级后界面还是旧样子 | 上一轮 DSH 留下的气泡窗口是 detached 进程，会占着 52399 让新窗口自行退出 | 1.4.2 起启动时会自动向旧实例发 `/api/quit` 并等端口释放；若仍在，手动结束 `electron.exe` 后重启 DSH |
 | 设置里有页面，但屏幕上没有气泡 | 极少数情况下宿主不是 Electron（CLI / web profile） | 见下一节；桌面版不需要处理 |
 | 设置了透明度/主题但没变化 | 桌面窗口没起来，改的是配置不是画面 | 同上 |
 
