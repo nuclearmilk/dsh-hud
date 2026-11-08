@@ -1,0 +1,35 @@
+# 依赖
+node_modules/
+
+# 本地运行时配置（可能含机器相关坐标 / 自定义头像 base64）
+config.json
+dsh-hud-config.json
+
+# 构建与打包产物
+dist/
+*.tgz
+*.zip
+*.7z
+
+# 日志与临时文件
+*.log
+*.tmp
+npm-debug.log*
+pnpm-debug.log*
+
+# 调试截图
+*.png
+*.jpg
+*.jpeg
+*.webp
+
+# 编辑器 / 系统
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# 环境变量
+.env
+.env.*
