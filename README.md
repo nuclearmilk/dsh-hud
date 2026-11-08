@@ -34,7 +34,7 @@
 想钉死版本（推荐写进 issue、教程、给别人复现时用）——用 tag 或 commit hash：
 
 ```
-https://github.com/nuclearmilk/dsh-hud#v1.4.2
+https://github.com/nuclearmilk/dsh-hud#v1.4.3
 ```
 
 ```
