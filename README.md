@@ -33,7 +33,7 @@
 想钉死版本（推荐写进 issue、教程、给别人复现时用）——用 tag 或 commit hash：
 
 ```
-https://github.com/nuclearmilk/dsh-hud#v1.1.0
+https://github.com/nuclearmilk/dsh-hud#v1.2.0
 ```
 
 ```
@@ -82,31 +82,47 @@ dsh plugin --profile tui add link:/path/to/dsh-hud
 | 设置里有页面，但屏幕上没有气泡 | 极少数情况下宿主不是 Electron（CLI / web profile） | 见下一节；桌面版不需要处理 |
 | 设置了透明度/主题但没变化 | 桌面窗口没起来，改的是配置不是画面 | 同上 |
 
-## 运行方式：默认零依赖
+## 运行方式：不需要装任何其他东西
 
-**桌面版什么都不用装。**桌面宿主本身就是 Electron，而插件由宿主的 cordis loader 在其主进程内加载，所以气泡窗口直接在本进程里创建（`lib/inprocess.js`）：不 spawn 任何外部进程、不依赖 Electron 包、也不依赖任何其他插件。
+桌面版装完即可用，**不需要预先安装 Electron，也不需要 dsh-pet 之类的插件**。缺运行时时插件会自己取一份（首次约 138 MB，之后复用）：
 
-只有一种情况会走回退路径：宿主不是 Electron（例如 `dsh --profile tui`、纯 Node 部署）。这时 `lib/index.js` 才去 spawn `runtime/main.js`，并按以下顺序找 Electron 可执行文件：
+```
+[dsh-hud] 未找到 Electron 运行时，正在从 registry.npmmirror.com 获取 electron 43.3.0
+[dsh-hud] Electron 运行时下载 20% (27.6/137.7 MB)
+...
+[dsh-hud] Electron 运行时就绪：~/.dsh/electron/electron.exe
+```
+
+- **镜像顺序**：`DSH_HUD_ELECTRON_MIRROR`（可选）→ npmmirror → 华为云 → GitHub，任一源失败自动换下一个
+- **断点续传**：中断后留下 `<包名>.zip.part`，下次从断点继续
+- **并发保护**：`.download.lock` 保证多个入口不会重复下载
+- **自定义位置**：`DSH_HUD_ELECTRON_DIR` 改存放目录，`DSH_HUD_ELECTRON_VERSION` 改版本
+
+查不到就用现成的，按以下顺序（`lib/index.js` 的 `resolveElectron`）：
 
 1. 环境变量 `DSH_HUD_ELECTRON` 指定的路径
-2. `~/.dsh/electron/`（例如 [dsh-pet](https://github.com/PC2005-cloud/dsh-pet) 自动下载的共享运行时）
+2. 共享运行时目录 `~/.dsh/electron/`（自动下载也放这里，`DSH_HUD_ELECTRON_DIR` 可改）
 3. 当前 DSH profile 的 `node_modules/electron/dist/`（含 pnpm 的 `.pnpm` 软链布局）
 4. 本插件包自身的 `node_modules/electron/dist/`
 5. 仅当宿主进程本身就是 `electron.exe` 时才复用 `process.execPath`
 
-都找不到时插件不会报错，DSH 照常运行，只是不会出现桌面气泡；插件日志会打印一条 `WARN` 说明原因。
+全都拿不到时插件不会报错，DSH 照常运行，只是不会出现桌面气泡；插件日志会打印 `WARN` 说明原因，设置页也会亮橙色提示。
 
-回退路径的三种补齐方式，任选其一：
+> 为什么不用宿主自带的 Electron：桌面宿主把 dsh runtime 放在 **Node 模式的 Electron 子进程**里加载插件（`ELECTRON_RUN_AS_NODE=1`），那个进程 `require('electron')` 会直接 `MODULE_NOT_FOUND`，拿不到 `BrowserWindow`。所以气泡必须由一份真正的 Electron 运行时来承载。
+
+手动准备运行时（离线机器 / 想自己控制版本）：
 
 ```powershell
-# A. 显式指定（最直接）
+# A. 显式指定已有 electron
 $env:DSH_HUD_ELECTRON = "C:\path\to\electron.exe"
 
-# B. 放一个共享运行时到这个约定目录，所有插件共用
+# B. 把运行时放到约定目录，所有插件共用
 #    ~/.dsh/electron/electron.exe      （Windows）
-#    ~/.dsh/electron/electron          （macOS / Linux）
+#    ~/.dsh/electron/Electron.app/Contents/MacOS/Electron  （macOS）
+#    ~/.dsh/electron/electron          （Linux）
 
-# C. 装 dsh-pet，它会自动下载共享运行时到 ~/.dsh/electron
+# C. 换镜像（国内常见做法）
+$env:DSH_HUD_ELECTRON_MIRROR = "https://registry.npmmirror.com/-/binary/electron"
 ```
 
 ## 数据与隐私
@@ -120,9 +136,10 @@ $env:DSH_HUD_ELECTRON = "C:\path\to\electron.exe"
 | 层 | 文件 | 职责 |
 | --- | --- | --- |
 | 宿主插件 | `lib/index.js` | 声明 `dsh.bundle`，监听 `session/event`，暴露 `/dsh-hud/state` |
-| 进程内窗口 | `lib/inprocess.js` | **桌面版默认路径**：在宿主 Electron 主进程内创建透明置顶窗，事件直接 `webContents.send`，不经过 HTTP |
+| 进程内窗口 | `lib/inprocess.js` | 仅当宿主真在 Electron 主进程里跑插件时启用；当前桌面版宿主是 Node 模式，因此实际不走这条 |
 | 配置前端 | `lib/client.js` | 在 `settings.section` 注册设置页 |
-| 独立窗口（回退） | `runtime/main.js` · `runtime/index.html` | 宿主不是 Electron 时，spawn 出来的独立透明窗口；渲染与拖拽代码与进程内路径共用 |
+| 运行时获取 | `lib/runtime-fetch.js` | 缺 Electron 时自动下载到 `~/.dsh/electron/`（镜像 + 断点续传 + 解压） |
+| 独立窗口 | `runtime/main.js` · `runtime/index.html` | 桌面版实际路径：spawn 出来的独立透明窗口，渲染与拖拽都在这里 |
 
 ## 协议
 
