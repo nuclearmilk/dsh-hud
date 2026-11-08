@@ -12,6 +12,7 @@
 - 🔤 **系统字体全量检索**：自动读取本机已安装字体，切换即时生效
 - 💬 **左右分边或整齐靠右**：`allRight` 关闭时气泡左右交替弹出，模拟对话节奏
 - ⚡ **四态精细化**：`THINKING` 7 秒自动淡出，`WORKING` 全程常驻，`STEP DONE` 短句小结，`COMPLETED` 输出摘要
+- ⏳ **常驻「进行中」气泡**：本轮没结束就一直挂一条 `任务进行中 · 已运行 mm:ss`，长任务不会看起来像已经跑完；设置页可关，**默认开启**
 
 ## 安装
 
@@ -33,7 +34,7 @@
 想钉死版本（推荐写进 issue、教程、给别人复现时用）——用 tag 或 commit hash：
 
 ```
-https://github.com/nuclearmilk/dsh-hud#v1.3.0
+https://github.com/nuclearmilk/dsh-hud#v1.4.0
 ```
 
 ```

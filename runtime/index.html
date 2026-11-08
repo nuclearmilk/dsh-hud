@@ -310,6 +310,32 @@
         transform: translateY(0) scale(1);
       }
     }
+
+    /* ── 常驻进行中气泡（本轮未结束就一直亮着） ── */
+    .message-row.pinned {
+      /* 不参与 MAX_BUBBLES 淘汰，也不被新消息顶替 */
+      z-index: 3;
+    }
+
+    .pin-dot {
+      display: inline-block;
+      width: 7px;
+      height: 7px;
+      margin-right: 6px;
+      border-radius: 50%;
+      background: currentColor;
+      vertical-align: middle;
+      animation: pin-pulse 1.4s ease-in-out infinite;
+    }
+
+    @keyframes pin-pulse {
+      0%, 100% { opacity: 0.3; transform: scale(0.82); }
+      50%      { opacity: 1;   transform: scale(1.18); }
+    }
+
+    .message-row.pinned .bubble-text {
+      font-variant-numeric: tabular-nums;
+    }
   </style>
 </head>
 <body>
@@ -378,6 +404,7 @@
     let currentConfig = {
       allRight: true,
       persistWorking: true,
+      showRunningBubble: true,   // 本轮未结束时常驻一条「进行中」气泡，默认开
       duration: 8500,
       screenPosition: 'right',
       bubbleTheme: 'light',
@@ -393,6 +420,94 @@
     let activeWorkingBubble = null;
     let movableBubbleTimer = null;
     let movableBubbleRow = null;
+
+    // ── 常驻「进行中」气泡 ────────────────────────────────────────────────
+    // 与普通气泡完全独立的生命周期：turn/start 亮起，turn/end 熄灭，期间不被新消息顶替、
+    // 不参与 MAX_BUBBLES 淘汰。带一个已运行计时器，长时间没新消息时也能看出它还活着。
+    let pinRow = null;
+    let pinTextEl = null;
+    let pinTimer = null;
+    let pinStartedAt = 0;
+    let turnRunning = false;
+
+    function pinLabel() {
+      return currentConfig.runningText || '任务进行中';
+    }
+
+    function paintPin() {
+      if (!pinTextEl) return;
+      const secs = Math.max(0, Math.floor((Date.now() - pinStartedAt) / 1000));
+      const mm = String(Math.floor(secs / 60)).padStart(2, '0');
+      const ss = String(secs % 60).padStart(2, '0');
+      pinTextEl.textContent = `${pinLabel()} · 已运行 ${mm}:${ss}`;
+    }
+
+    function buildPinRow() {
+      const row = document.createElement('div');
+      row.className = `message-row pinned ${currentConfig.allRight ? 'right' : getNextSide()}`;
+
+      const avatar = document.createElement('div');
+      avatar.className = 'avatar gemini';
+      const avStyle = resolveAvatarStyle(true);
+      avatar.style.backgroundColor = avStyle.backgroundColor || '';
+      avatar.style.backgroundImage = avStyle.backgroundImage || '';
+      avatar.style.backgroundSize = avStyle.backgroundSize || 'cover';
+      row.appendChild(avatar);
+
+      const bubble = document.createElement('div');
+      bubble.className = 'bubble';
+      bubble.style.fontSize = `${currentConfig.fontSize || 14}px`;
+      bubble.style.fontFamily = resolveFontFamily(currentConfig.fontFamily);
+
+      const bar = document.createElement('div');
+      bar.className = 'badge-bar';
+
+      const badge = document.createElement('div');
+      badge.className = 'badge working';
+      const dot = document.createElement('span');
+      dot.className = 'pin-dot';
+      badge.appendChild(dot);
+      badge.appendChild(document.createTextNode('Running'));
+      bar.appendChild(badge);
+
+      const time = document.createElement('span');
+      time.className = 'time-label';
+      const d = new Date();
+      time.textContent = `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+      bar.appendChild(time);
+      bubble.appendChild(bar);
+
+      pinTextEl = document.createElement('div');
+      pinTextEl.className = 'bubble-text';
+      bubble.appendChild(pinTextEl);
+      row.appendChild(bubble);
+
+      // 气泡处于常驻状态时不应被拖动逻辑接管（移动模式靠普通气泡即可）
+      return row;
+    }
+
+    function showPinnedRunning() {
+      turnRunning = true;
+      if (currentConfig.showRunningBubble === false) return;
+      if (!pinStartedAt) pinStartedAt = Date.now();
+      if (!pinRow || !pinRow.isConnected) {
+        pinRow = buildPinRow();
+        container.appendChild(pinRow);
+        if (!pinTimer) pinTimer = setInterval(paintPin, 1000);
+      } else {
+        // 始终保持在最底部（新气泡都是从后面 append 的）
+        container.appendChild(pinRow);
+      }
+      paintPin();
+    }
+
+    function hidePinnedRunning() {
+      turnRunning = false;
+      pinStartedAt = 0;
+      if (pinTimer) { clearInterval(pinTimer); pinTimer = null; }
+      if (pinRow) { dismissMessage(pinRow); pinRow = null; }
+      pinTextEl = null;
+    }
 
     function resetMovableBubbleTimer() {
       if (movableBubbleTimer) {
@@ -469,6 +584,14 @@
 
       // 更新头像
       updateAllAvatars();
+
+      // 常驻气泡：开关切换后立即反映（关掉就收，开着且本轮没结束就补回来）
+      if (currentConfig.showRunningBubble === false) {
+        if (pinRow) hidePinnedRunning();
+        turnRunning = false;
+      } else if (turnRunning && (!pinRow || !pinRow.isConnected)) {
+        showPinnedRunning();
+      }
     }
 
     function resolveAvatarStyle(isRight) {
@@ -627,6 +750,9 @@
       row.appendChild(bubble);
       container.appendChild(row);
 
+      // 常驻气泡永远待在最底部（DOM 顺序 = 视觉顺序）
+      if (pinRow && pinRow.isConnected) container.appendChild(pinRow);
+
       // 逐字打字
       let i = 0;
       const speed = Math.max(8, Math.min(25, Math.floor(900 / (text.length || 1))));
@@ -668,8 +794,8 @@
     const MAX_BUBBLES = 5;
 
     function enforceMaxBubbles() {
-      // 只数「没在退场」的气泡，正在淡出的不占名额
-      const alive = Array.from(container.querySelectorAll('.message-row:not(.exit)'));
+      // 只数「没在退场」的气泡，正在淡出的不占名额；常驻进度气泡也不占名额、不会被淘汰
+      const alive = Array.from(container.querySelectorAll('.message-row:not(.exit):not(.pinned)'));
       let overflow = alive.length + 1 - MAX_BUBBLES;
       for (let i = 0; i < alive.length && overflow > 0; i++, overflow--) {
         dismissMessage(alive[i]);
@@ -690,8 +816,22 @@
 
     ipcRenderer.on('dsh-hud:event', (event, data) => {
       if (data.type === 'workStatus') {
-        if (data.state === 'working' || data.state === 'thinking') {
-          // thinking 是过渡状态，给它设置常规停留时长（如 7 秒自动淡出），不会无限期霸占屏幕
+        if (data.state === 'busy') {
+          // 本轮开始：常驻气泡亮起，直到 turn/end 的 idle 才熄灭
+          showPinnedRunning();
+          // 保留一次 THINKING 过渡气泡（7 秒自然退场），它负责「刚开始在干嘛」
+          createMessage({
+            badgeType: 'thinking',
+            badgeText: 'Thinking',
+            text: data.task || '正在梳理思路与执行方案...',
+            showGlow: true,
+            isWorking: false,
+            duration: 7000
+          });
+        } else if (data.state === 'idle') {
+          hidePinnedRunning();
+        } else if (data.state === 'working' || data.state === 'thinking') {
+          // 常驻气泡负责「还在跑」，这条负责「在跑什么」，两者互不顶替
           const isThinking = data.state === 'thinking';
           createMessage({
             badgeType: isThinking ? 'thinking' : 'working',

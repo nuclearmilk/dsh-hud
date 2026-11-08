@@ -27,6 +27,7 @@ const LEGACY_CONFIG_PATH = path.join(__dirname, 'config.json');
 const DEFAULT_CONFIG = {
   allRight: true,
   persistWorking: true,
+  showRunningBubble: true,
   duration: 8500,
   screenPosition: 'right', // 'right' | 'left' | 'custom'
   customX: null,
