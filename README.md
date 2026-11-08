@@ -2,6 +2,8 @@
 
 为 **DeepSeek Harness** 打造的屏幕贴边任务通知流。群唱（Cappella）风格的水润毛玻璃气泡会在屏幕边缘实时浮出，汇报 `THINKING` / `WORKING` / `STEP DONE` / `COMPLETED` 四类进度，像聊天一样陪着你干活。
 
+![任务通知流 HUD 演示](docs/demo.gif)
+
 ## 特性
 
 - 🫧 **Cappella 水润毛玻璃**：高斯模糊 + 内发光边框，通透不糊字
@@ -32,10 +34,11 @@
 4. **重启 DSH**（气泡是独立 Electron 进程，由宿主插件在启动时拉起）
 5. 设置侧栏出现 **「任务通知流HUD」** 页 = 装好了
 
+不想用 git 也能装：[Releases](https://github.com/nuclearmilk/dsh-hud/releases) 页面提供打包好的 `dsh-hud-<版本>.tgz`，安装框里同样支持直接粘它的下载地址。
 想钉死版本（推荐写进 issue、教程、给别人复现时用）——用 tag 或 commit hash：
 
 ```
-https://github.com/nuclearmilk/dsh-hud#v1.5.0
+https://github.com/nuclearmilk/dsh-hud#v1.5.1
 ```
 
 ```

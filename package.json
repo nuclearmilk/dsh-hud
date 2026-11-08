@@ -1,7 +1,7 @@
 {
   "name": "dsh-hud",
-  "version": "1.5.0",
-  "description": "Cappella-style floating bubble task notification HUD for DeepSeek Harness desktop (runs in-process, no external Electron needed)",
+  "version": "1.5.1",
+  "description": "Cappella-style floating bubble task notification HUD for DeepSeek Harness desktop; provisions its own Electron runtime",
   "license": "MIT",
   "type": "module",
   "main": "lib/index.js",
@@ -17,6 +17,7 @@
   "files": [
     "lib",
     "runtime",
+    "docs",
     "cordis.patch.yml"
   ],
   "dsh": {
@@ -27,6 +28,18 @@
       "platform": "web"
     }
   },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/nuclearmilk/dsh-hud.git"
+  },
+  "homepage": "https://github.com/nuclearmilk/dsh-hud#readme",
+  "keywords": [
+    "dsh",
+    "deepseek-harness",
+    "plugin",
+    "hud",
+    "notification"
+  ],
   "peerDependencies": {
     "@deepseek-ai/cordis": "*",
     "react": ">=18"
@@ -38,5 +51,8 @@
     "react": {
       "optional": true
     }
+  },
+  "publishConfig": {
+    "access": "public"
   }
 }
