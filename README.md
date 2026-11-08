@@ -33,7 +33,7 @@
 想钉死版本（推荐写进 issue、教程、给别人复现时用）——用 tag 或 commit hash：
 
 ```
-https://github.com/nuclearmilk/dsh-hud#v1.0.1
+https://github.com/nuclearmilk/dsh-hud#v1.1.0
 ```
 
 ```
@@ -78,13 +78,15 @@ dsh plugin --profile tui add link:/path/to/dsh-hud
 | --- | --- | --- |
 | 安装时提示 spec 无效 | 输入框里留了模板文本 | 只保留 `https://github.com/nuclearmilk/dsh-hud` |
 | `could not read Username` / 403 | 仓库不可公开访问 | 必须用公开仓库；私有仓库的 git 安装需要配置凭据 |
-| 设置里有页面，但屏幕上没有气泡 | 缺 Electron 运行时 | 见下一节 |
+| 升级到 1.1.0 后出现两个气泡窗口 | 旧版本 spawn 的独立窗口还没退 | 新版本会自动向旧实例发 `/api/quit`；若仍在，结束任务管理器里的 `electron.exe` 后重启 DSH |
+| 设置里有页面，但屏幕上没有气泡 | 极少数情况下宿主不是 Electron（CLI / web profile） | 见下一节；桌面版不需要处理 |
 | 设置了透明度/主题但没变化 | 桌面窗口没起来，改的是配置不是画面 | 同上 |
-| 出现第二个 DSH 窗口而不是气泡 | 把宿主的 `DeepSeek Harness.exe` 当成了 Electron | 本插件已禁止这条回退；若仍出现，检查 `DSH_HUD_ELECTRON` 指向的不是宿主 exe |
 
-## 运行依赖：Electron 运行时
+## 运行方式：默认零依赖
 
-桌面气泡是一个独立的透明 Electron 窗口，因此本机需要有一个可用的 Electron 可执行文件。插件按以下顺序自动查找：
+**桌面版什么都不用装。**桌面宿主本身就是 Electron，而插件由宿主的 cordis loader 在其主进程内加载，所以气泡窗口直接在本进程里创建（`lib/inprocess.js`）：不 spawn 任何外部进程、不依赖 Electron 包、也不依赖任何其他插件。
+
+只有一种情况会走回退路径：宿主不是 Electron（例如 `dsh --profile tui`、纯 Node 部署）。这时 `lib/index.js` 才去 spawn `runtime/main.js`，并按以下顺序找 Electron 可执行文件：
 
 1. 环境变量 `DSH_HUD_ELECTRON` 指定的路径
 2. `~/.dsh/electron/`（例如 [dsh-pet](https://github.com/PC2005-cloud/dsh-pet) 自动下载的共享运行时）
@@ -94,7 +96,7 @@ dsh plugin --profile tui add link:/path/to/dsh-hud
 
 都找不到时插件不会报错，DSH 照常运行，只是不会出现桌面气泡；插件日志会打印一条 `WARN` 说明原因。
 
-三种补齐方式，任选其一：
+回退路径的三种补齐方式，任选其一：
 
 ```powershell
 # A. 显式指定（最直接）
@@ -117,9 +119,10 @@ $env:DSH_HUD_ELECTRON = "C:\path\to\electron.exe"
 
 | 层 | 文件 | 职责 |
 | --- | --- | --- |
-| 宿主插件 | `lib/index.js` | 声明 `dsh.bundle`，监听 `session/event`，暴露 `/dsh-hud/state`，拉起桌面窗口 |
+| 宿主插件 | `lib/index.js` | 声明 `dsh.bundle`，监听 `session/event`，暴露 `/dsh-hud/state` |
+| 进程内窗口 | `lib/inprocess.js` | **桌面版默认路径**：在宿主 Electron 主进程内创建透明置顶窗，事件直接 `webContents.send`，不经过 HTTP |
 | 配置前端 | `lib/client.js` | 在 `settings.section` 注册设置页 |
-| 桌面视窗 | `runtime/main.js` · `runtime/index.html` | 透明置顶窗口、气泡渲染与拖拽 |
+| 独立窗口（回退） | `runtime/main.js` · `runtime/index.html` | 宿主不是 Electron 时，spawn 出来的独立透明窗口；渲染与拖拽代码与进程内路径共用 |
 
 ## 协议
 

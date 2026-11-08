@@ -171,7 +171,7 @@ function saveConfig(newCfg) {
     }
 
     if (mainWindow && !mainWindow.isDestroyed()) {
-      mainWindow.webContents.send('config-updated', hudConfig);
+      mainWindow.webContents.send('dsh-hud:config-updated', hudConfig);
     }
   } catch (e) {}
 }
@@ -216,6 +216,14 @@ function startLocalControlServer() {
           res.end(JSON.stringify({ error: e.message }));
         }
       });
+      return;
+    }
+
+    if (parsedUrl.pathname === '/api/quit' && req.method === 'POST') {
+      // 桌面宿主改用进程内窗口后，旧实例可能还占着 52399：留一个体面的退出通道
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ ok: true }));
+      setTimeout(() => { try { app.quit(); } catch (e) {} }, 50);
       return;
     }
 
@@ -289,14 +297,14 @@ function createWindow() {
 
   mainWindow.webContents.on('did-finish-load', () => {
     applyIgnoreMouseEvents();
-    mainWindow.webContents.send('config-updated', hudConfig);
+    mainWindow.webContents.send('dsh-hud:config-updated', hudConfig);
   });
 
   mainWindow.on('closed', () => {
     mainWindow = null;
   });
 
-  ipcMain.on('window-dragged', (event, { x: newX, y: newY }) => {
+  ipcMain.on('dsh-hud:window-dragged', (event, { x: newX, y: newY }) => {
     if (!mainWindow || mainWindow.isDestroyed()) return;
     mainWindow.setPosition(Math.round(newX), Math.round(newY));
     hudConfig.screenPosition = 'custom';
@@ -484,7 +492,7 @@ function handleStateUpdate(data) {
       lastWorkCounter = workLeaf.counter;
       const workData = workLeaf.data;
       if (workData && workData.state) {
-        mainWindow.webContents.send('dsh-event', {
+        mainWindow.webContents.send('dsh-hud:event', {
           type: 'workStatus',
           state: workData.state,
           task: workData.task || null,
@@ -505,7 +513,7 @@ function handleStateUpdate(data) {
       const isStale = frameTs > 0 && Date.now() - frameTs > 60 * 1000;
 
       if (event && !isStale) {
-        mainWindow.webContents.send('dsh-event', {
+        mainWindow.webContents.send('dsh-hud:event', {
           type: 'notify',
           event: event,
           timestamp: Date.now()

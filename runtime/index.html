@@ -342,7 +342,7 @@
         const dy = moveEv.screenY - hintStartY;
         hintStartX = moveEv.screenX;
         hintStartY = moveEv.screenY;
-        ipcRenderer.send('window-dragged', {
+        ipcRenderer.send('dsh-hud:window-dragged', {
           x: window.screenX + dx,
           y: window.screenY + dy
         });
@@ -515,7 +515,7 @@
       });
     }
 
-    ipcRenderer.on('config-updated', (event, cfg) => {
+    ipcRenderer.on('dsh-hud:config-updated', (event, cfg) => {
       applyConfig(cfg);
     });
 
@@ -600,7 +600,7 @@
           const dy = moveEv.screenY - startY;
           startX = moveEv.screenX;
           startY = moveEv.screenY;
-          ipcRenderer.send('window-dragged', {
+          ipcRenderer.send('dsh-hud:window-dragged', {
             x: window.screenX + dx,
             y: window.screenY + dy
           });
@@ -688,7 +688,7 @@
       "妥啦！下一项任务马上来~"
     ];
 
-    ipcRenderer.on('dsh-event', (event, data) => {
+    ipcRenderer.on('dsh-hud:event', (event, data) => {
       if (data.type === 'workStatus') {
         if (data.state === 'working' || data.state === 'thinking') {
           // thinking 是过渡状态，给它设置常规停留时长（如 7 秒自动淡出），不会无限期霸占屏幕
