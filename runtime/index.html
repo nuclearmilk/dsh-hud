@@ -405,6 +405,7 @@
       allRight: true,
       persistWorking: true,
       showRunningBubble: true,   // 本轮未结束时常驻一条「进行中」气泡，默认开
+      runningIdleTimeoutMin: 45, // 这么久没有任何进度事件就自动收起常驻气泡（兜底）
       duration: 8500,
       screenPosition: 'right',
       bubbleTheme: 'light',
@@ -429,6 +430,49 @@
     let pinTimer = null;
     let pinStartedAt = 0;
     let turnRunning = false;
+
+    // ── 兜底看门狗 ────────────────────────────────────────────────────────
+    // turn/end 有可能永远不来（宿主崩溃、强杀进程、事件丢失）。没有兜底的话，
+    // 常驻气泡会一直挂着并继续计时，用户永远关不掉。这里按「最后一次收到进度事件」
+    // 计时，超时就把气泡收起，并留一条一次性提示说明原因。
+    let lastEventAt = 0;
+    let watchdogTimer = null;
+    const WATCHDOG_TICK_MS = 5000;
+
+    function noteEvent() {
+      lastEventAt = Date.now();
+      if (!watchdogTimer) watchdogTimer = setInterval(watchdogTick, WATCHDOG_TICK_MS);
+    }
+
+    function idleTimeoutMs() {
+      const min = Number(currentConfig.runningIdleTimeoutMin);
+      const safe = Number.isFinite(min) && min > 0 ? min : 45;
+      return safe * 60 * 1000;
+    }
+
+    function watchdogTick() {
+      if (!turnRunning || !pinRow || !lastEventAt) {
+        // 没有在跑的东西了，停掉轮询省点开销
+        if (watchdogTimer) { clearInterval(watchdogTimer); watchdogTimer = null; }
+        return;
+      }
+      const idle = Date.now() - lastEventAt;
+      if (idle < idleTimeoutMs()) return;
+
+      turnRunning = false;
+      pinStartedAt = 0;
+      hidePinnedRunning();
+      if (watchdogTimer) { clearInterval(watchdogTimer); watchdogTimer = null; }
+      const mins = Math.max(1, Math.round(idleTimeoutMs() / 60000));
+      createMessage({
+        badgeType: 'hud-ready',
+        badgeText: 'HUD',
+        text: `超过 ${mins} 分钟没有新进度，进行中气泡已自动收起`,
+        showGlow: false,
+        isWorking: false,
+        duration: 6000
+      });
+    }
 
     function pinLabel() {
       return currentConfig.runningText || '任务进行中';
@@ -814,6 +858,7 @@
     ];
 
     ipcRenderer.on('dsh-hud:event', (event, data) => {
+      noteEvent();   // 任何进度事件都算「还活着」，重置兜底计时
       if (data.type === 'workStatus') {
         if (data.state === 'busy') {
           // 本轮开始：常驻气泡亮起，直到 turn/end 的 idle 才熄灭

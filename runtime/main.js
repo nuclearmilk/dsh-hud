@@ -28,6 +28,7 @@ const DEFAULT_CONFIG = {
   allRight: true,
   persistWorking: true,
   showRunningBubble: true,
+  runningIdleTimeoutMin: 45,
   duration: 8500,
   screenPosition: 'right', // 'right' | 'left' | 'custom'
   customX: null,
