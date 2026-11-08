@@ -30,13 +30,17 @@
 4. **重启 DSH**（气泡是独立 Electron 进程，由宿主插件在启动时拉起）
 5. 设置侧栏出现 **「任务通知流HUD」** 页 = 装好了
 
-想钉死版本（推荐写进 issue、教程、给别人复现时用）——用 commit hash 一定有效：
+想钉死版本（推荐写进 issue、教程、给别人复现时用）——用 tag 或 commit hash：
 
 ```
-https://github.com/nuclearmilk/dsh-hud#5d02243
+https://github.com/nuclearmilk/dsh-hud#v1.0.1
 ```
 
-如果维护者打了 tag，也可以写成 `https://github.com/nuclearmilk/dsh-hud#v1.0.0`。
+```
+https://github.com/nuclearmilk/dsh-hud#<commit hash，从 Commits 页复制>
+```
+
+`#` 后面不写也可以，那就是装默认分支最新代码，适合自己追踪开发版。
 
 ### 命令行（仅非 `desktop` profile，例如 `tui`）
 

@@ -1,6 +1,6 @@
 {
   "name": "dsh-hud",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Cappella-style floating bubble task notification HUD for DeepSeek Harness desktop",
   "license": "MIT",
   "type": "module",
@@ -29,6 +29,14 @@
   },
   "peerDependencies": {
     "@deepseek-ai/cordis": "*",
-    "react": "^18.2.0"
+    "react": ">=18"
+  },
+  "peerDependenciesMeta": {
+    "@deepseek-ai/cordis": {
+      "optional": true
+    },
+    "react": {
+      "optional": true
+    }
   }
 }
