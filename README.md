@@ -33,7 +33,7 @@
 想钉死版本（推荐写进 issue、教程、给别人复现时用）——用 tag 或 commit hash：
 
 ```
-https://github.com/nuclearmilk/dsh-hud#v1.2.0
+https://github.com/nuclearmilk/dsh-hud#v1.3.0
 ```
 
 ```
@@ -93,8 +93,9 @@ dsh plugin --profile tui add link:/path/to/dsh-hud
 [dsh-hud] Electron 运行时就绪：~/.dsh/electron/electron.exe
 ```
 
-- **镜像顺序**：`DSH_HUD_ELECTRON_MIRROR`（可选）→ npmmirror → 华为云 → GitHub，任一源失败自动换下一个
-- **断点续传**：中断后留下 `<包名>.zip.part`，下次从断点继续
+- **自动选最快的源**：开跑前对 GitHub、npmmirror、华为云**并行测速**（各取 512 KB，从首字节计时），用测出来的第一名下载，其余按名次兜底。开着代理时通常 GitHub 最快，直连中国大陆时通常镜像最快——不用你手动选
+- **指定源**：`DSH_HUD_ELECTRON_MIRROR` 可强制某个镜像排在最前
+- **断点续传**：中断后留下 `<包名>.zip.part`，下次从断点继续（换源也能接着下，各源是同一个文件）
 - **并发保护**：`.download.lock` 保证多个入口不会重复下载
 - **自定义位置**：`DSH_HUD_ELECTRON_DIR` 改存放目录，`DSH_HUD_ELECTRON_VERSION` 改版本
 
