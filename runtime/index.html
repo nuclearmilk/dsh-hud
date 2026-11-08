@@ -501,9 +501,9 @@
       paintPin();
     }
 
+    // 只负责把 DOM 与计时器收掉；turnRunning 与起始时间由 turn/idle 事件决定，
+    // 这样本轮中途关掉开关再打开时，气泡能立刻补回来且计时连续。
     function hidePinnedRunning() {
-      turnRunning = false;
-      pinStartedAt = 0;
       if (pinTimer) { clearInterval(pinTimer); pinTimer = null; }
       if (pinRow) { dismissMessage(pinRow); pinRow = null; }
       pinTextEl = null;
@@ -588,7 +588,6 @@
       // 常驻气泡：开关切换后立即反映（关掉就收，开着且本轮没结束就补回来）
       if (currentConfig.showRunningBubble === false) {
         if (pinRow) hidePinnedRunning();
-        turnRunning = false;
       } else if (turnRunning && (!pinRow || !pinRow.isConnected)) {
         showPinnedRunning();
       }
@@ -829,6 +828,8 @@
             duration: 7000
           });
         } else if (data.state === 'idle') {
+          turnRunning = false;
+          pinStartedAt = 0;       // 本轮结束，下一轮重新计时
           hidePinnedRunning();
         } else if (data.state === 'working' || data.state === 'thinking') {
           // 常驻气泡负责「还在跑」，这条负责「在跑什么」，两者互不顶替
