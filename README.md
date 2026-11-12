@@ -38,7 +38,7 @@
 想钉死版本（推荐写进 issue、教程、给别人复现时用）——用 tag 或 commit hash：
 
 ```
-https://github.com/nuclearmilk/dsh-hud#v1.5.1
+https://github.com/nuclearmilk/dsh-hud#v1.6.0
 ```
 
 ```
@@ -131,6 +131,33 @@ $env:DSH_HUD_ELECTRON = "C:\path\to\electron.exe"
 $env:DSH_HUD_ELECTRON_MIRROR = "https://registry.npmmirror.com/-/binary/electron"
 ```
 
+## 启动性能
+
+插件自身的启动开销很小，实测（本机）：
+
+| 环节 | 耗时 |
+|---|---|
+| 模块导入 `lib/index.js` | 60 ms（冷）/ 2 ms（热） |
+| `apply()` 同步部分 | **2.0 ms** |
+| 气泡窗口 Electron 冷启动（spawn → 可响应） | 0.78 s |
+
+为了不和 DSH 自己的启动抢磁盘与 CPU，**气泡窗口默认在插件挂载后延迟 3 秒才拉起**。想改：
+
+```powershell
+# 0 = 立即拉起；也可以调大（毫秒）
+$env:DSH_HUD_SPAWN_DELAY_MS = "0"
+```
+
+排查「DSH 启动慢」时，可以看这份日志——它记录宿主启动后多久轮到本插件（`uptime`）：
+
+```
+~/.dsh/dsh-hud/boot.log
+2026-11-12T11:29:24.104Z uptime=0.1s pid=2536 apply enter
+2026-11-12T11:29:24.105Z uptime=0.1s pid=2536 apply done, hud spawn scheduled in 3000ms
+2026-11-12T11:29:27.108Z uptime=3.1s pid=2536 hud spawned via ...electron.exe
+```
+
+如果 `uptime` 已经很大（例如 45 秒），说明这段时间花在**本插件之前**的加载阶段，与本插件无关。
 ## 数据与隐私
 
 - 配置保存在 Electron 的 `userData` 目录下（`dsh-hud-config.json`），不写入插件包目录
