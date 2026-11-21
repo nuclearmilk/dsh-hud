@@ -58,7 +58,7 @@
     /* 贴在屏幕最左侧时的镜面翻转排版 */
     body.pos-left .message-row.right,
     body.pos-left .message-row.left {
-      flex-direction: row; /* 头像在最左侧，气泡在右侧 */
+      flex-direction: row;
     }
 
     body.pos-left .bubble {
@@ -69,11 +69,11 @@
 
     /* 贴在屏幕最右侧时的经典排版 */
     body.pos-right .message-row.right {
-      flex-direction: row-reverse; /* 用户气泡靠右贴边 */
+      flex-direction: row-reverse;
     }
 
     body.pos-right .message-row.left {
-      flex-direction: row; /* 系统气泡靠左 */
+      flex-direction: row;
     }
 
     body.pos-right .message-row.right .bubble {
@@ -196,6 +196,7 @@
       align-items: center;
       gap: 6px;
     }
+
     .bubble-glow {
       position: absolute;
       inset: 0;
@@ -247,10 +248,22 @@
       border: 1px solid rgba(124, 58, 237, 0.25);
     }
 
+    body.theme-dark .badge.thinking {
+      background: rgba(167, 139, 250, 0.2);
+      color: #ddd6fe;
+      border-color: rgba(167, 139, 250, 0.38);
+    }
+
     .badge.working {
       background: rgba(217, 119, 6, 0.12);
       color: #b45309;
       border: 1px solid rgba(217, 119, 6, 0.25);
+    }
+
+    body.theme-dark .badge.working {
+      background: rgba(251, 191, 36, 0.2);
+      color: #fde68a;
+      border-color: rgba(251, 191, 36, 0.38);
     }
 
     .badge.completed {
@@ -259,10 +272,22 @@
       border: 1px solid rgba(16, 185, 129, 0.28);
     }
 
+    body.theme-dark .badge.completed {
+      background: rgba(52, 211, 153, 0.2);
+      color: #a7f3d0;
+      border-color: rgba(52, 211, 153, 0.38);
+    }
+
     .badge.step-done {
       background: rgba(14, 165, 233, 0.14);
       color: #0284c7;
       border: 1px solid rgba(14, 165, 233, 0.28);
+    }
+
+    body.theme-dark .badge.step-done {
+      background: rgba(56, 189, 248, 0.2);
+      color: #bae6fd;
+      border-color: rgba(56, 189, 248, 0.38);
     }
 
     .badge.hud-ready {
@@ -281,6 +306,12 @@
       background: rgba(14, 165, 233, 0.12);
       color: #0369a1;
       border: 1px solid rgba(14, 165, 233, 0.25);
+    }
+
+    body.theme-dark .badge.user {
+      background: rgba(56, 189, 248, 0.2);
+      color: #bae6fd;
+      border-color: rgba(56, 189, 248, 0.38);
     }
 
     .time-label {
@@ -313,7 +344,6 @@
 
     /* ── 常驻进行中气泡（本轮未结束就一直亮着） ── */
     .message-row.pinned {
-      /* 不参与 MAX_BUBBLES 淘汰，也不被新消息顶替 */
       z-index: 3;
     }
 
@@ -346,43 +376,20 @@
   </div>
 
   <script>
-    const { ipcRenderer } = require('electron');
+    const hudBridge = window.dshHud || {
+      onConfigUpdated: () => () => {},
+      onEvent: () => () => {},
+      dragMove: () => {},
+      dragEnd: () => {}
+    };
+
     const container = document.getElementById('message-stream');
-
-    // 拖拽手柄 (#drag-hint) 也支持直接按住拖拽整个窗口
     const dragHint = document.getElementById('drag-hint');
-    let isHintDragging = false;
-    let hintStartX = 0;
-    let hintStartY = 0;
 
-    dragHint.addEventListener('mousedown', (e) => {
-      if (!currentConfig.isMovable) return;
-      isHintDragging = true;
-      hintStartX = e.screenX;
-      hintStartY = e.screenY;
-      e.preventDefault();
-
-      const onHintMove = (moveEv) => {
-        if (!isHintDragging) return;
-        const dx = moveEv.screenX - hintStartX;
-        const dy = moveEv.screenY - hintStartY;
-        hintStartX = moveEv.screenX;
-        hintStartY = moveEv.screenY;
-        ipcRenderer.send('dsh-hud:window-dragged', {
-          x: window.screenX + dx,
-          y: window.screenY + dy
-        });
-      };
-
-      const onHintUp = () => {
-        isHintDragging = false;
-        window.removeEventListener('mousemove', onHintMove);
-        window.removeEventListener('mouseup', onHintUp);
-      };
-
-      window.addEventListener('mousemove', onHintMove);
-      window.addEventListener('mouseup', onHintUp);
-    });
+    const SAFE_DATA_IMAGE_RE = /^data:image\/(png|jpeg|jpg|webp|gif);base64,[A-Za-z0-9+/=]+$/;
+    const SAFE_HEX_COLOR_RE = /^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/;
+    const SAFE_GRADIENT_RE = /^linear-gradient\(\s*\d{1,3}deg(?:\s*,\s*#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6})(?:\s+\d{1,3}%)?){2,5}\s*\)$/;
+    const DANGEROUS_FONT_CHARS_RE = /["';{}\\\r\n()<>]/g;
 
     const PRESET_FONT_MAP = {
       system: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "PingFang SC", "Microsoft YaHei", sans-serif',
@@ -396,18 +403,30 @@
     function resolveFontFamily(fontName) {
       if (!fontName || fontName === 'system') return PRESET_FONT_MAP.system;
       if (PRESET_FONT_MAP[fontName]) return PRESET_FONT_MAP[fontName];
-      // 用户选择的具体字体（如 "Microsoft YaHei"、"KaiTi"、系统扫描字体等）
-      // 加上双引号并兜底 sans-serif，确保无论中文还是英文字体名都能精准生效！
-      return `"${fontName}", -apple-system, sans-serif`;
+      const safe = String(fontName).replace(DANGEROUS_FONT_CHARS_RE, '').trim().slice(0, 120);
+      if (!safe) return PRESET_FONT_MAP.system;
+      return `"${safe}", -apple-system, sans-serif`;
+    }
+
+    function splitGraphemes(text) {
+      const str = String(text ?? '');
+      if (typeof Intl !== 'undefined' && typeof Intl.Segmenter === 'function') {
+        try {
+          const seg = new Intl.Segmenter('zh', { granularity: 'grapheme' });
+          return Array.from(seg.segment(str), (item) => item.segment);
+        } catch (e) {}
+      }
+      return Array.from(str);
     }
 
     let currentConfig = {
       allRight: true,
       persistWorking: true,
-      showRunningBubble: true,   // 本轮未结束时常驻一条「进行中」气泡，默认开
-      runningIdleTimeoutMin: 45, // 这么久没有任何进度事件就自动收起常驻气泡（兜底）
+      showRunningBubble: true,
+      runningIdleTimeoutMin: 45,
       duration: 8500,
       screenPosition: 'right',
+      isMovable: false,
       bubbleTheme: 'light',
       bubbleOpacity: 85,
       avatarType: 'preset-purple',
@@ -418,13 +437,54 @@
       fontSize: 14
     };
 
+    let prevIsMovable = false;
     let activeWorkingBubble = null;
     let movableBubbleTimer = null;
     let movableBubbleRow = null;
+    const bubbleTimers = new WeakMap();
+
+    // 统一拖拽逻辑：mousemove 只发 dragMove（不写盘），mouseup / blur 发 dragEnd（落盘一次）
+    function attachWindowDrag(el) {
+      el.addEventListener('mousedown', (e) => {
+        if (!currentConfig.isMovable) return;
+        let isDragging = true;
+        let startX = e.screenX;
+        let startY = e.screenY;
+        let winX = window.screenX;
+        let winY = window.screenY;
+        e.preventDefault();
+
+        const onMouseMove = (moveEv) => {
+          if (!isDragging) return;
+          const dx = moveEv.screenX - startX;
+          const dy = moveEv.screenY - startY;
+          startX = moveEv.screenX;
+          startY = moveEv.screenY;
+          winX += dx;
+          winY += dy;
+          hudBridge.dragMove(winX, winY);
+          resetMovableBubbleTimer();
+        };
+
+        const finishDrag = () => {
+          if (!isDragging) return;
+          isDragging = false;
+          window.removeEventListener('mousemove', onMouseMove);
+          window.removeEventListener('mouseup', finishDrag);
+          window.removeEventListener('blur', finishDrag);
+          hudBridge.dragEnd(winX, winY);
+          resetMovableBubbleTimer();
+        };
+
+        window.addEventListener('mousemove', onMouseMove);
+        window.addEventListener('mouseup', finishDrag);
+        window.addEventListener('blur', finishDrag);
+      });
+    }
+
+    attachWindowDrag(dragHint);
 
     // ── 常驻「进行中」气泡 ────────────────────────────────────────────────
-    // 与普通气泡完全独立的生命周期：turn/start 亮起，turn/end 熄灭，期间不被新消息顶替、
-    // 不参与 MAX_BUBBLES 淘汰。带一个已运行计时器，长时间没新消息时也能看出它还活着。
     let pinRow = null;
     let pinTextEl = null;
     let pinTimer = null;
@@ -432,9 +492,6 @@
     let turnRunning = false;
 
     // ── 兜底看门狗 ────────────────────────────────────────────────────────
-    // turn/end 有可能永远不来（宿主崩溃、强杀进程、事件丢失）。没有兜底的话，
-    // 常驻气泡会一直挂着并继续计时，用户永远关不掉。这里按「最后一次收到进度事件」
-    // 计时，超时就把气泡收起，并留一条一次性提示说明原因。
     let lastEventAt = 0;
     let watchdogTimer = null;
     const WATCHDOG_TICK_MS = 5000;
@@ -452,7 +509,6 @@
 
     function watchdogTick() {
       if (!turnRunning || !pinRow || !lastEventAt) {
-        // 没有在跑的东西了，停掉轮询省点开销
         if (watchdogTimer) { clearInterval(watchdogTimer); watchdogTimer = null; }
         return;
       }
@@ -526,7 +582,6 @@
       bubble.appendChild(pinTextEl);
       row.appendChild(bubble);
 
-      // 气泡处于常驻状态时不应被拖动逻辑接管（移动模式靠普通气泡即可）
       return row;
     }
 
@@ -539,27 +594,29 @@
         container.appendChild(pinRow);
         if (!pinTimer) pinTimer = setInterval(paintPin, 1000);
       } else {
-        // 始终保持在最底部（新气泡都是从后面 append 的）
         container.appendChild(pinRow);
       }
       paintPin();
     }
 
-    // 只负责把 DOM 与计时器收掉；turnRunning 与起始时间由 turn/idle 事件决定，
-    // 这样本轮中途关掉开关再打开时，气泡能立刻补回来且计时连续。
     function hidePinnedRunning() {
       if (pinTimer) { clearInterval(pinTimer); pinTimer = null; }
       if (pinRow) { dismissMessage(pinRow); pinRow = null; }
       pinTextEl = null;
     }
 
-    function resetMovableBubbleTimer() {
+    function clearMovableBubbleTimer() {
       if (movableBubbleTimer) {
         clearTimeout(movableBubbleTimer);
         movableBubbleTimer = null;
       }
-      // 停止移动超过 7 秒后气泡自动隐藏淡出
+    }
+
+    function resetMovableBubbleTimer() {
+      clearMovableBubbleTimer();
+      if (!currentConfig.isMovable || !movableBubbleRow) return;
       movableBubbleTimer = setTimeout(() => {
+        movableBubbleTimer = null;
         if (movableBubbleRow && currentConfig.isMovable) {
           dismissMessage(movableBubbleRow);
           movableBubbleRow = null;
@@ -569,8 +626,8 @@
 
     function applyConfig(cfg) {
       currentConfig = { ...currentConfig, ...cfg };
+      const nextIsMovable = Boolean(currentConfig.isMovable);
 
-      // 根据贴边位置切换 body 类名，触发镜面翻转
       if (currentConfig.screenPosition === 'left') {
         document.body.classList.add('pos-left');
         document.body.classList.remove('pos-right');
@@ -579,57 +636,53 @@
         document.body.classList.remove('pos-left');
       }
 
-      // 移动 / 锁定模式类名切换
-      if (currentConfig.isMovable) {
+      // 移动 / 锁定模式切换：仅在 false -> true 边沿弹出提示气泡，避免改其他配置时反复弹窗
+      if (nextIsMovable) {
         document.body.classList.add('mode-movable');
-        // 进入移动模式：确保一定有一个气泡在屏幕上供拖拽
-        if (!movableBubbleRow || !movableBubbleRow.isConnected) {
+        if (!prevIsMovable && (!movableBubbleRow || !movableBubbleRow.isConnected)) {
           movableBubbleRow = createMessage({
             side: 'right',
             badgeType: 'working',
             badgeText: 'Movable',
             text: '✋ 移动模式：按住我或上方按钮拖动！',
             showGlow: false,
-            isWorking: true,
+            isWorking: false,
+            isMovableHint: true,
             duration: 0
           });
         }
       } else {
         document.body.classList.remove('mode-movable');
+        clearMovableBubbleTimer();
         if (movableBubbleRow) {
           dismissMessage(movableBubbleRow);
           movableBubbleRow = null;
         }
       }
+      prevIsMovable = nextIsMovable;
 
-      // 气泡明暗主题切换
       if (currentConfig.bubbleTheme === 'dark') {
         document.body.classList.add('theme-dark');
       } else {
         document.body.classList.remove('theme-dark');
       }
 
-      // 气泡背景透明度 (20% ~ 100%)
       const op = Math.max(20, Math.min(100, Number(currentConfig.bubbleOpacity) || 85)) / 100;
       document.documentElement.style.setProperty('--hud-opacity', op.toFixed(2));
 
-      // 应用全局字体与字号
       const fontStack = resolveFontFamily(currentConfig.fontFamily);
       document.body.style.fontFamily = fontStack;
 
-      // 更新已有气泡与容器的字体
       const bubbles = document.querySelectorAll('.bubble, .bubble-text, .badge, .time-label');
-      bubbles.forEach(b => {
+      bubbles.forEach((b) => {
         b.style.fontFamily = fontStack;
       });
-      document.querySelectorAll('.bubble').forEach(b => {
+      document.querySelectorAll('.bubble').forEach((b) => {
         b.style.fontSize = `${currentConfig.fontSize || 14}px`;
       });
 
-      // 更新头像
       updateAllAvatars();
 
-      // 常驻气泡：开关切换后立即反映（关掉就收，开着且本轮没结束就补回来）
       if (currentConfig.showRunningBubble === false) {
         if (pinRow) hidePinnedRunning();
       } else if (turnRunning && (!pinRow || !pinRow.isConnected)) {
@@ -639,49 +692,62 @@
 
     function resolveAvatarStyle(isRight) {
       if (!isRight) {
-        // 用户头像默认蓝青
         return {
           backgroundColor: '#3b82f6',
           backgroundImage: 'linear-gradient(135deg, #60a5fa, #38bdf8)'
         };
       }
 
-      // 系统/DSH 机器人头像
-      if (currentConfig.avatarType === 'custom' && currentConfig.customAvatar) {
+      if (
+        currentConfig.avatarType === 'custom' &&
+        typeof currentConfig.customAvatar === 'string' &&
+        SAFE_DATA_IMAGE_RE.test(currentConfig.customAvatar)
+      ) {
         return {
           backgroundColor: '#f1f5f9',
           backgroundImage: `url("${currentConfig.customAvatar}")`,
           backgroundSize: 'cover'
         };
-      } else if (currentConfig.avatarType === 'color' && currentConfig.avatarColor) {
+      }
+
+      if (
+        currentConfig.avatarType === 'color' &&
+        typeof currentConfig.avatarColor === 'string' &&
+        SAFE_HEX_COLOR_RE.test(currentConfig.avatarColor)
+      ) {
         return {
           backgroundColor: currentConfig.avatarColor,
           backgroundImage: 'none'
         };
-      } else if (currentConfig.avatarType === 'monet' && currentConfig.avatarGradient) {
+      }
+
+      if (
+        currentConfig.avatarType === 'monet' &&
+        typeof currentConfig.avatarGradient === 'string' &&
+        SAFE_GRADIENT_RE.test(currentConfig.avatarGradient)
+      ) {
         return {
           backgroundImage: currentConfig.avatarGradient
         };
-      } else {
-        // 默认紫色
-        return {
-          backgroundColor: '#8b5cf6',
-          backgroundImage: 'linear-gradient(135deg, #a78bfa, #c084fc)'
-        };
       }
+
+      return {
+        backgroundColor: '#8b5cf6',
+        backgroundImage: 'linear-gradient(135deg, #a78bfa, #c084fc)'
+      };
     }
 
     function updateAllAvatars() {
       const avatars = document.querySelectorAll('.avatar.gemini');
       const style = resolveAvatarStyle(true);
-      avatars.forEach(av => {
+      avatars.forEach((av) => {
         av.style.backgroundColor = style.backgroundColor || '';
         av.style.backgroundImage = style.backgroundImage || '';
         av.style.backgroundSize = style.backgroundSize || 'cover';
       });
     }
 
-    ipcRenderer.on('dsh-hud:config-updated', (event, cfg) => {
+    hudBridge.onConfigUpdated((cfg) => {
       applyConfig(cfg);
     });
 
@@ -689,23 +755,31 @@
 
     function getNextSide() {
       if (currentConfig.allRight) return 'right';
-      // 开启交替对话模式：左右交替随机出现，像群唱/聊天对话一样生动
       lastAlternatingSide = (lastAlternatingSide === 'right') ? 'left' : 'right';
       return lastAlternatingSide;
     }
 
-    function createMessage({ side = '', badgeType = '', badgeText = '', text = '', showGlow = false, isWorking = false, duration = 0 }) {
+    function createMessage({
+      side = '',
+      badgeType = '',
+      badgeText = '',
+      text = '',
+      showGlow = false,
+      isWorking = false,
+      isMovableHint = false,
+      duration = 0
+    }) {
       const chosenSide = side || getNextSide();
       const resolvedSide = currentConfig.allRight ? 'right' : chosenSide;
 
-      // 无论新气泡是 working 还是普通消息，只要当前有旧的常驻工作气泡在展示，一律平滑顶替/关掉旧的，绝不重复堆叠！
-      if (activeWorkingBubble) {
+      // 普通任务气泡会平滑顶替旧的 activeWorkingBubble；移动模式提示气泡独立存在，互不干扰
+      if (!isMovableHint && activeWorkingBubble) {
         dismissMessage(activeWorkingBubble);
         activeWorkingBubble = null;
       }
 
       const row = document.createElement('div');
-      row.className = `message-row ${resolvedSide}`;
+      row.className = `message-row ${resolvedSide}${isMovableHint ? ' movable-hint' : ''}`;
 
       const avatar = document.createElement('div');
       avatar.className = 'avatar gemini';
@@ -748,74 +822,50 @@
       textContainer.className = 'bubble-text';
       bubble.appendChild(textContainer);
 
-      // 支持拖拽逻辑：按住气泡拖动窗口
-      let isDragging = false;
-      let startX = 0;
-      let startY = 0;
+      attachWindowDrag(bubble);
 
-      bubble.addEventListener('mousedown', (e) => {
-        if (!currentConfig.isMovable) return;
-        isDragging = true;
-        startX = e.screenX;
-        startY = e.screenY;
-        e.preventDefault();
-
-        const onMouseMove = (moveEv) => {
-          if (!isDragging) return;
-          const dx = moveEv.screenX - startX;
-          const dy = moveEv.screenY - startY;
-          startX = moveEv.screenX;
-          startY = moveEv.screenY;
-          ipcRenderer.send('dsh-hud:window-dragged', {
-            x: window.screenX + dx,
-            y: window.screenY + dy
-          });
-          // 移动过程中重置 7 秒倒计时
-          resetMovableBubbleTimer();
-        };
-
-        const onMouseUp = () => {
-          isDragging = false;
-          window.removeEventListener('mousemove', onMouseMove);
-          window.removeEventListener('mouseup', onMouseUp);
-          // 松手后启动 7 秒无操作自动隐藏倒计时
-          resetMovableBubbleTimer();
-        };
-
-        window.addEventListener('mousemove', onMouseMove);
-        window.addEventListener('mouseup', onMouseUp);
-      });
-      bubble.appendChild(textContainer);
-
-      // 先腾位置：气泡总数上限 5，超出时最早出现的那一条先退场
-      enforceMaxBubbles();
+      if (!isMovableHint) {
+        enforceMaxBubbles();
+      }
 
       row.appendChild(bubble);
       container.appendChild(row);
 
-      // 常驻气泡永远待在最底部（DOM 顺序 = 视觉顺序）
       if (pinRow && pinRow.isConnected) container.appendChild(pinRow);
 
-      // 逐字打字
+      // 按完整码点/字素簇逐字打字，不拆断 Emoji 代理对
+      const chars = splitGraphemes(text);
+      const timers = { typeTimer: null, dismissTimer: null };
+      bubbleTimers.set(row, timers);
+
       let i = 0;
-      const speed = Math.max(8, Math.min(25, Math.floor(900 / (text.length || 1))));
-      const timer = setInterval(() => {
-        if (i < text.length) {
+      const speed = Math.max(8, Math.min(25, Math.floor(900 / (chars.length || 1))));
+      timers.typeTimer = setInterval(() => {
+        if (!row.isConnected || row.classList.contains('exit')) {
+          clearInterval(timers.typeTimer);
+          timers.typeTimer = null;
+          return;
+        }
+        if (i < chars.length) {
           const span = document.createElement('span');
           span.className = 'char-fade';
-          span.textContent = text[i];
+          span.textContent = chars[i];
           textContainer.appendChild(span);
           i++;
         } else {
-          clearInterval(timer);
+          clearInterval(timers.typeTimer);
+          timers.typeTimer = null;
         }
       }, speed);
 
-      if (isWorking && currentConfig.persistWorking) {
+      if (isMovableHint) {
+        // 移动模式提示气泡由 movableBubbleTimer 独立管理
+      } else if (isWorking && currentConfig.persistWorking) {
         activeWorkingBubble = row;
       } else {
-        const timeout = duration > 0 ? duration : currentConfig.duration;
-        setTimeout(() => {
+        const timeout = duration > 0 ? duration : (Number(currentConfig.duration) || 8500);
+        timers.dismissTimer = setTimeout(() => {
+          timers.dismissTimer = null;
           dismissMessage(row);
         }, timeout);
       }
@@ -825,6 +875,17 @@
 
     function dismissMessage(row) {
       if (!row || row.classList.contains('exit')) return;
+
+      const timers = bubbleTimers.get(row);
+      if (timers) {
+        if (timers.typeTimer) { clearInterval(timers.typeTimer); timers.typeTimer = null; }
+        if (timers.dismissTimer) { clearTimeout(timers.dismissTimer); timers.dismissTimer = null; }
+        bubbleTimers.delete(row);
+      }
+
+      if (row === activeWorkingBubble) activeWorkingBubble = null;
+      if (row === movableBubbleRow) movableBubbleRow = null;
+
       row.classList.add('exit');
       setTimeout(() => {
         if (row.parentNode === container) {
@@ -833,37 +894,43 @@
       }, 400);
     }
 
-    /** 屏上同时可见的气泡上限；超出时最早出现的先退场。 */
+    /** 屏上同时可见的普通气泡上限；超出时最早出现的先退场。 */
     const MAX_BUBBLES = 5;
 
     function enforceMaxBubbles() {
-      // 只数「没在退场」的气泡，正在淡出的不占名额；常驻进度气泡也不占名额、不会被淘汰
-      const alive = Array.from(container.querySelectorAll('.message-row:not(.exit):not(.pinned)'));
+      const alive = Array.from(container.querySelectorAll('.message-row:not(.exit):not(.pinned):not(.movable-hint)'));
       let overflow = alive.length + 1 - MAX_BUBBLES;
       for (let i = 0; i < alive.length && overflow > 0; i++, overflow--) {
         dismissMessage(alive[i]);
       }
     }
 
-    function removeOldestMessage() {
-      const first = container.querySelector('.message-row:not(.exit)');
-      if (first) dismissMessage(first);
-    }
-
     const STEP_DONE_TEXTS = [
-      "这一步处理好啦，接着看下一步",
-      "搞定一步，继续看看哦~",
-      "这步跑完啦，趁热打铁继续~",
-      "妥啦！下一项任务马上来~"
+      '这一步处理好啦，接着看下一步',
+      '搞定一步，继续看看哦~',
+      '这步跑完啦，趁热打铁继续~',
+      '妥啦！下一项任务马上来~'
     ];
 
-    ipcRenderer.on('dsh-hud:event', (event, data) => {
-      noteEvent();   // 任何进度事件都算「还活着」，重置兜底计时
+    hudBridge.onEvent((data) => {
+      if (!data || typeof data !== 'object') return;
+
+      if (data.type === 'testBubble') {
+        createMessage({
+          badgeType: 'completed',
+          badgeText: 'Preview',
+          text: data.text || '这是一条测试气泡，用于预览当前位置、主题与字体效果 ✨',
+          showGlow: true,
+          isWorking: false,
+          duration: Number(currentConfig.duration) || 8500
+        });
+        return;
+      }
+
+      noteEvent();
       if (data.type === 'workStatus') {
         if (data.state === 'busy') {
-          // 本轮开始：常驻气泡亮起，直到 turn/end 的 idle 才熄灭
           showPinnedRunning();
-          // 保留一次 THINKING 过渡气泡（7 秒自然退场），它负责「刚开始在干嘛」
           createMessage({
             badgeType: 'thinking',
             badgeText: 'Thinking',
@@ -874,11 +941,9 @@
           });
         } else if (data.state === 'idle') {
           turnRunning = false;
-          pinStartedAt = 0;       // 本轮结束，下一轮重新计时
+          pinStartedAt = 0;
           hidePinnedRunning();
         } else if (data.state === 'working' || data.state === 'thinking') {
-          // 常驻气泡负责「还在跑」，这条负责「在跑什么」，两者互不顶替。
-          // 这里也点亮常驻气泡：HUD 若在本轮中途重启过，就靠 working/thinking 把状态补回来。
           showPinnedRunning();
           const isThinking = data.state === 'thinking';
           createMessage({
@@ -886,11 +951,10 @@
             badgeText: isThinking ? 'Thinking' : 'Working',
             text: data.task ? data.task : (isThinking ? '正在梳理思路与执行方案...' : '正在调用系统工具干活中...'),
             showGlow: true,
-            isWorking: !isThinking, // 只有持续 working 才作为 activeWorkingBubble 常驻
+            isWorking: !isThinking,
             duration: isThinking ? 7000 : 0
           });
         } else if (data.state === 'result') {
-          // 工具执行完毕，步骤小结提示：只显示括号内的花式短句，不再重复前缀文案
           const randomDoneText = STEP_DONE_TEXTS[Math.floor(Math.random() * STEP_DONE_TEXTS.length)];
           createMessage({
             badgeType: 'step-done',
@@ -898,28 +962,28 @@
             text: randomDoneText,
             showGlow: false,
             isWorking: false,
-            duration: 7000 // 与 THINKING 一致：7 秒自动淡出，工具跑得再快也不会糊满屏
+            duration: 7000
           });
         }
       } else if (data.type === 'notify') {
         const ev = data.event;
-        if (ev.type === 'turn/end') {
+        if (ev && ev.type === 'turn/end') {
           const text = ev.data?.text || '任务执行完毕！';
-          const snippet = text.slice(0, 95) + (text.length > 95 ? '...' : '');
+          const chars = splitGraphemes(text);
+          const snippet = chars.length > 95 ? `${chars.slice(0, 95).join('')}...` : text;
           createMessage({
             badgeType: 'completed',
             badgeText: 'Completed',
             text: snippet,
             showGlow: false,
             isWorking: false,
-            // 用设置里的「完成气泡停留时长」，改完下一轮立即生效
             duration: Number(currentConfig.duration) || 8500
           });
         }
       }
     });
 
-    // 启动自检气泡：明确表示「窗口已就绪」，短时自动退场，避免被误认成旧对话内容
+    // 启动自检气泡
     createMessage({
       badgeType: 'hud-ready',
       badgeText: 'HUD Ready',

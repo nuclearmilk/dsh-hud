@@ -7,15 +7,17 @@
 ## 特性
 
 - 🫧 **Cappella 水润毛玻璃**：高斯模糊 + 内发光边框，通透不糊字
-- 🎨 **明暗双主题**：☀️ 纯净白色毛玻璃 / 🌙 深邃暗色磨砂
+- 🎨 **明暗双主题**：☀️ 纯净白色毛玻璃 / 🌙 深邃暗色磨砂（徽章与控件全量适配对比度）
 - 🎚️ **无级透明度**：20% ~ 100% 拖动实时生效
-- ✋ **自由拖拽并记忆位置**：移动模式随手拖，锁定后坐标不回弹
-- 🎭 **个性化头像**：莫奈渐变、纯色（选色轮盘 / 直接输入 `#8b5cf6`）、本地图片上传
-- 🔤 **系统字体全量检索**：自动读取本机已安装字体，切换即时生效
+- ✋ **自由拖拽并记忆位置**：移动模式随手拖，锁定后坐标不回弹；支持多显示器智能边界钳位，拔掉副屏坐标不跑丢
+- 🎭 **个性化头像**：莫奈渐变、纯色（选色轮盘 / 直接输入 `#8b5cf6`）、本地图片上传（前端自动居中裁剪压缩为轻量 WebP/PNG）
+- 🔤 **系统字体全量检索**：跨平台（Windows / macOS / Linux）自动检索本机已安装字体并带内存缓存，切换即时生效
 - 💬 **左右分边或整齐靠右**：`allRight` 关闭时气泡左右交替弹出，模拟对话节奏
 - ⚡ **四态精细化**：`THINKING` 7 秒自动淡出，`WORKING` 全程常驻，`STEP DONE` 短句小结，`COMPLETED` 输出摘要
 - ⏳ **常驻「进行中」气泡**：本轮没结束就一直挂一条 `任务进行中 · 已运行 mm:ss`，长任务不会看起来像已经跑完；设置页可关，**默认开启**
   · **静默兜底**：超过设定时长（默认 45 分钟）没有任何进度事件就自动收起并留一条说明，避免宿主异常时气泡永久挂着
+- 🫧 **一键预览测试气泡**：设置页提供「发送测试气泡」按钮，无需等任务触发即可直观预览气泡位置、字号与色彩
+- 🛡️ **工业级安全与进程隔离**：Electron 窗口完全开启 `contextIsolation: true` + `sandbox: true` + `nodeIntegration: false`，仅暴露受控 preload 接口；本地控制端口启用随机 Token 鉴权、回环 Origin 校验与字段白名单防注入
 
 ## 安装
 
@@ -38,7 +40,7 @@
 想钉死版本（推荐写进 issue、教程、给别人复现时用）——用 tag 或 commit hash：
 
 ```
-https://github.com/nuclearmilk/dsh-hud#v1.6.0
+https://github.com/nuclearmilk/dsh-hud#v1.7.0
 ```
 
 ```
@@ -98,10 +100,10 @@ dsh plugin --profile tui add link:/path/to/dsh-hud
 [dsh-hud] Electron 运行时就绪：~/.dsh/electron/electron.exe
 ```
 
-- **自动选最快的源**：开跑前对 GitHub、npmmirror、华为云**并行测速**（各取 512 KB，从首字节计时），用测出来的第一名下载，其余按名次兜底。开着代理时通常 GitHub 最快，直连中国大陆时通常镜像最快——不用你手动选
-- **指定源**：`DSH_HUD_ELECTRON_MIRROR` 可强制某个镜像排在最前
-- **断点续传**：中断后留下 `<包名>.zip.part`，下次从断点继续（换源也能接着下，各源是同一个文件）
-- **并发保护**：`.download.lock` 保证多个入口不会重复下载
+- **自动选最快的源**：开跑前对 GitHub、npmmirror、华为云**并行测速**（各取 512 KB，从首字节计时并设总超时上限），用测出来的第一名下载，其余按名次兜底。自动识别 `HTTP_PROXY` / `HTTPS_PROXY` / `NO_PROXY` 环境变量，开着代理时通常 GitHub 最快，直连中国大陆时通常镜像最快——不用你手动选
+- **指定源**：`DSH_HUD_ELECTRON_MIRROR` 可强制某个镜像排在最前（支持 `https://` 与内网 `http://` 镜像）
+- **断点续传 + 校验**：中断后保留 `<包名>.zip.part` 供下次续传（换源也能接着下），下载完毕校验 `SHASUMS256.txt` 后再重命名为 `.zip` 解压；校验或解压失败自动清理损坏文件并切下一个源
+- **过期锁自愈**：`.download.lock` 内记录 PID 与时间戳，防止并发重复下载，且异常强杀残留的过期锁会自动回收
 - **自定义位置**：`DSH_HUD_ELECTRON_DIR` 改存放目录，`DSH_HUD_ELECTRON_VERSION` 改版本
 
 查不到就用现成的，按以下顺序（`lib/index.js` 的 `resolveElectron`）：
@@ -160,19 +162,41 @@ $env:DSH_HUD_SPAWN_DELAY_MS = "0"
 如果 `uptime` 已经很大（例如 45 秒），说明这段时间花在**本插件之前**的加载阶段，与本插件无关。
 ## 数据与隐私
 
-- 配置保存在 Electron 的 `userData` 目录下（`dsh-hud-config.json`），不写入插件包目录
+- 配置统一保存在系统应用数据目录（`<appData>/dsh-hud/dsh-hud-config.json`），不写入插件包目录；首次升级会自动迁移旧路径配置
 - 不联网、不上报：全部事件来自本机 DSH 的 `session/event`，气泡数据只在本机进程间流转
-- 本地控制接口仅监听 `127.0.0.1:52399`
+- 本地控制接口仅监听 `127.0.0.1:52399`（可通过 `DSH_HUD_CONTROL_PORT` 修改），启用本机回环 Origin 白名单、随机 `X-DSH-HUD-Token` 鉴权（支持通过 `DSH_HUD_CONTROL_TOKEN` 指定）、2 MB 请求体上限及配置字段白名单校验
+- 渲染窗口采用 `contextIsolation: true`、`nodeIntegration: false`、`sandbox: true`，仅通过 `runtime/preload.js` 暴露受控 IPC 接口
+
+## 环境变量
+
+| 变量 | 默认值 | 说明 |
+| --- | --- | --- |
+| `DSH_HUD_SPAWN_DELAY_MS` | `3000` | 启动后延迟拉起气泡窗口的毫秒数（`0` = 立即） |
+| `DSH_HUD_CONTROL_PORT` | `52399` | 本地控制接口端口 |
+| `DSH_HUD_CONTROL_TOKEN` | 随机生成 | 覆盖本地控制接口鉴权 Token |
+| `DSH_HUD_ELECTRON` | 自动解析 | 显式指定 Electron 可执行文件路径 |
+| `DSH_HUD_ELECTRON_DIR` | `~/.dsh/electron` | 共享 Electron 运行时存放目录 |
+| `DSH_HUD_ELECTRON_VERSION` | `43.3.0` | 自动下载的 Electron 版本 |
+| `DSH_HUD_ELECTRON_MIRROR` | 未设置 | 置顶自定义镜像基址（支持 `http://` / `https://`） |
+| `HTTP_PROXY` / `HTTPS_PROXY` / `NO_PROXY` | 系统环境 | 自动下载运行时与测速时遵循的代理配置 |
 
 ## 架构
 
 | 层 | 文件 | 职责 |
 | --- | --- | --- |
-| 宿主插件 | `lib/index.js` | 声明 `dsh.bundle`，监听 `session/event`，暴露 `/dsh-hud/state` |
+| 宿主插件 | `lib/index.js` | 声明 `dsh.bundle`，监听 `session/event`，暴露 `/dsh-hud/state` 与 `/dsh-hud/control-info` |
+| 共享核心 | `lib/hud-core.cjs` | 统一配置读写与白名单校验、多屏坐标钳位、跨平台字体检索、本地控制服务与多会话事件队列 |
 | 进程内窗口 | `lib/inprocess.js` | 仅当宿主真在 Electron 主进程里跑插件时启用；当前桌面版宿主是 Node 模式，因此实际不走这条 |
-| 配置前端 | `lib/client.js` | 在 `settings.section` 注册设置页 |
-| 运行时获取 | `lib/runtime-fetch.js` | 缺 Electron 时自动下载到 `~/.dsh/electron/`（镜像 + 断点续传 + 解压） |
-| 独立窗口 | `runtime/main.js` · `runtime/index.html` | 桌面版实际路径：spawn 出来的独立透明窗口，渲染与拖拽都在这里 |
+| 配置前端 | `lib/client.js` | 在 `settings.section` 注册设置页，支持测试气泡预览、头像压缩上传与断线自动重连 |
+| 运行时获取 | `lib/runtime-fetch.js` | 缺 Electron 时自动下载到 `~/.dsh/electron/`（测速 + 代理 + 断点续传 + SHA-256 校验 + 解压） |
+| 独立窗口 | `runtime/main.js` · `runtime/preload.js` · `runtime/index.html` | 桌面版实际路径：spawn 出来的独立透明窗口，隔离上下文桥接、拖拽与动画渲染都在这里 |
+| 单元测试 | `test/hud-core.test.mjs` · `test/runtime-fetch.test.mjs` | 基于 Node 内置 `node:test` 的核心逻辑与下载器测试 |
+
+## 开发与测试
+
+```sh
+npm test
+```
 
 ## 协议
 
