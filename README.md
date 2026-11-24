@@ -1,7 +1,7 @@
 # dsh-hud · 任务通知流 HUD
 
 [![Release](https://img.shields.io/github/v/release/nuclearmilk/dsh-hud?style=flat-square&color=8b5cf6)](https://github.com/nuclearmilk/dsh-hud/releases)
-[![Test & Release](https://img.shields.io/github/actions/workflow/status/nuclearmilk/dsh-hud/release.yml?branch=main&style=flat-square&label=CI%20%26%20Release)](https://github.com/nuclearmilk/dsh-hud/actions/workflows/release.yml)
+[![Test & Release](https://github.com/nuclearmilk/dsh-hud/actions/workflows/release.yml/badge.svg?branch=main)](https://github.com/nuclearmilk/dsh-hud/actions/workflows/release.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue?style=flat-square)](LICENSE)
 
 为 **DeepSeek Harness (DSH)** 打造的屏幕贴边任务通知流 HUD。群唱（Cappella）风格的水润毛玻璃气泡会在屏幕边缘实时浮出，不仅汇报 `THINKING` / `WORKING` / `STEP DONE` / `COMPLETED` 与长任务 `RUNNING` 计时，更能在 **需要你批准权限、填写执行方向或确认计划** 时置顶弹出高对比脉冲强提醒，防止挂在后台时忘记处理。
