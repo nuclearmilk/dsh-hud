@@ -19,6 +19,7 @@ pnpm-debug.log*
 
 # 调试截图
 *.png
+!screenshots/*.png
 *.jpg
 *.jpeg
 *.webp
