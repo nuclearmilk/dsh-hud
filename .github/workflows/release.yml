@@ -40,8 +40,9 @@ jobs:
         id: pack
         run: |
           TGZ=$(npm pack --silent | tail -n 1)
+          cp "$TGZ" dsh-hud.tgz
           echo "tgz=$TGZ" >> "$GITHUB_OUTPUT"
-          sha256sum "$TGZ"
+          sha256sum "$TGZ" dsh-hud.tgz
 
       - name: 自动创建/更新 GitHub Release 并上传 tgz
         if: startsWith(github.ref, 'refs/tags/v') || inputs.tag != ''
@@ -51,9 +52,9 @@ jobs:
           TGZ: ${{ steps.pack.outputs.tgz }}
         run: |
           if gh release view "$TAG" >/dev/null 2>&1; then
-            gh release upload "$TAG" "$TGZ" --clobber
+            gh release upload "$TAG" "$TGZ" dsh-hud.tgz --clobber
           else
-            gh release create "$TAG" "$TGZ" \
+            gh release create "$TAG" "$TGZ" dsh-hud.tgz \
               --title "$TAG" \
               --generate-notes
           fi
