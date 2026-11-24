@@ -16,7 +16,8 @@
 - ⚡ **四态精细化**：`THINKING` 7 秒自动淡出，`WORKING` 全程常驻，`STEP DONE` 短句小结，`COMPLETED` 输出摘要
 - ⏳ **常驻「进行中」气泡**：本轮没结束就一直挂一条 `任务进行中 · 已运行 mm:ss`，长任务不会看起来像已经跑完；设置页可关，**默认开启**
   · **静默兜底**：超过设定时长（默认 45 分钟）没有任何进度事件就自动收起并留一条说明，避免宿主异常时气泡永久挂着
-- 🫧 **一键预览测试气泡**：设置页提供「发送测试气泡」按钮，无需等任务触发即可直观预览气泡位置、字号与色彩
+- 🚨 **等待批准 / 填写方向常驻强提醒**：当任务阻塞在需要你批准权限（`NEED APPROVAL`）、选择或填写执行方向（`NEED INPUT`，含定时提问挂起态）或确认计划（`PLAN REVIEW`）时，自动置顶高对比脉冲气泡并累计 `已等待 mm:ss`，暂停静默自动收起直到你处理完毕；可选轻柔提示音，设置页支持「🔔 预览等待提醒」
+- 🫧 **一键预览测试气泡**：设置页提供「发送测试气泡」与「预览等待提醒」按钮，无需等任务触发即可直观预览气泡位置、字号与色彩
 - 🛡️ **工业级安全与进程隔离**：Electron 窗口完全开启 `contextIsolation: true` + `sandbox: true` + `nodeIntegration: false`，仅暴露受控 preload 接口；本地控制端口启用随机 Token 鉴权、回环 Origin 校验与字段白名单防注入
 
 ## 安装
@@ -40,7 +41,7 @@
 想钉死版本（推荐写进 issue、教程、给别人复现时用）——用 tag 或 commit hash：
 
 ```
-https://github.com/nuclearmilk/dsh-hud#v1.7.0
+https://github.com/nuclearmilk/dsh-hud#v1.8.0
 ```
 
 ```
@@ -164,7 +165,7 @@ $env:DSH_HUD_SPAWN_DELAY_MS = "0"
 
 - 配置统一保存在系统应用数据目录（`<appData>/dsh-hud/dsh-hud-config.json`），不写入插件包目录；首次升级会自动迁移旧路径配置
 - 不联网、不上报：全部事件来自本机 DSH 的 `session/event`，气泡数据只在本机进程间流转
-- 本地控制接口仅监听 `127.0.0.1:52399`（可通过 `DSH_HUD_CONTROL_PORT` 修改），启用本机回环 Origin 白名单、随机 `X-DSH-HUD-Token` 鉴权（支持通过 `DSH_HUD_CONTROL_TOKEN` 指定）、2 MB 请求体上限及配置字段白名单校验
+- 本地控制接口仅监听 `127.0.0.1:52399`（可通过 `DSH_HUD_CONTROL_PORT` 修改），启用本机回环与 `dsh-app://` 桌面渲染源白名单、随机 `X-DSH-HUD-Token` 鉴权（支持通过 `DSH_HUD_CONTROL_TOKEN` 指定）、2 MB 请求体上限及配置字段白名单校验
 - 渲染窗口采用 `contextIsolation: true`、`nodeIntegration: false`、`sandbox: true`，仅通过 `runtime/preload.js` 暴露受控 IPC 接口
 
 ## 环境变量

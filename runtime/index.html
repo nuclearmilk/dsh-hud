@@ -366,6 +366,131 @@
     .message-row.pinned .bubble-text {
       font-variant-numeric: tabular-nums;
     }
+
+    /* ── 常驻「等待批准 / 填写执行方向」高对比强提醒气泡 ── */
+    .message-row.waiting-pinned {
+      z-index: 6;
+    }
+
+    .message-row.waiting-pinned .bubble {
+      border-width: 1.5px;
+      animation: waiting-border-pulse 2s ease-in-out infinite;
+    }
+
+    .message-row.waiting-approval .bubble {
+      border-color: rgba(239, 68, 68, 0.72);
+      box-shadow:
+        0 12px 34px rgba(239, 68, 68, 0.24),
+        0 4px 12px rgba(0, 0, 0, 0.08),
+        inset 0 1px 1px rgba(255, 255, 255, 0.9);
+    }
+
+    .message-row.waiting-input .bubble {
+      border-color: rgba(245, 158, 11, 0.78);
+      box-shadow:
+        0 12px 34px rgba(245, 158, 11, 0.24),
+        0 4px 12px rgba(0, 0, 0, 0.08),
+        inset 0 1px 1px rgba(255, 255, 255, 0.9);
+    }
+
+    .message-row.waiting-plan .bubble {
+      border-color: rgba(99, 102, 241, 0.76);
+      box-shadow:
+        0 12px 34px rgba(99, 102, 241, 0.24),
+        0 4px 12px rgba(0, 0, 0, 0.08),
+        inset 0 1px 1px rgba(255, 255, 255, 0.9);
+    }
+
+    body.theme-dark .message-row.waiting-approval .bubble {
+      background: rgba(45, 16, 24, calc(var(--hud-opacity, 0.85) * 1.05));
+      border-color: rgba(248, 113, 113, 0.72);
+      box-shadow:
+        0 12px 36px rgba(239, 68, 68, 0.32),
+        0 4px 12px rgba(0, 0, 0, 0.35),
+        inset 0 1px 1px rgba(255, 255, 255, 0.14);
+    }
+
+    body.theme-dark .message-row.waiting-input .bubble {
+      background: rgba(42, 27, 12, calc(var(--hud-opacity, 0.85) * 1.05));
+      border-color: rgba(251, 191, 36, 0.72);
+      box-shadow:
+        0 12px 36px rgba(245, 158, 11, 0.3),
+        0 4px 12px rgba(0, 0, 0, 0.35),
+        inset 0 1px 1px rgba(255, 255, 255, 0.14);
+    }
+
+    body.theme-dark .message-row.waiting-plan .bubble {
+      background: rgba(25, 24, 52, calc(var(--hud-opacity, 0.85) * 1.05));
+      border-color: rgba(129, 140, 248, 0.72);
+      box-shadow:
+        0 12px 36px rgba(99, 102, 241, 0.32),
+        0 4px 12px rgba(0, 0, 0, 0.35),
+        inset 0 1px 1px rgba(255, 255, 255, 0.14);
+    }
+
+    @keyframes waiting-border-pulse {
+      0%, 100% { filter: brightness(1); transform: translateZ(0); }
+      50%      { filter: brightness(1.06); transform: translateZ(0); }
+    }
+
+    .badge.waiting-approval {
+      background: rgba(239, 68, 68, 0.16);
+      color: #dc2626;
+      border: 1px solid rgba(239, 68, 68, 0.38);
+    }
+
+    body.theme-dark .badge.waiting-approval {
+      background: rgba(248, 113, 113, 0.24);
+      color: #fecaca;
+      border-color: rgba(248, 113, 113, 0.48);
+    }
+
+    .badge.waiting-input {
+      background: rgba(245, 158, 11, 0.16);
+      color: #b45309;
+      border: 1px solid rgba(245, 158, 11, 0.38);
+    }
+
+    body.theme-dark .badge.waiting-input {
+      background: rgba(251, 191, 36, 0.24);
+      color: #fde68a;
+      border-color: rgba(251, 191, 36, 0.48);
+    }
+
+    .badge.waiting-plan {
+      background: rgba(99, 102, 241, 0.16);
+      color: #4338ca;
+      border: 1px solid rgba(99, 102, 241, 0.38);
+    }
+
+    body.theme-dark .badge.waiting-plan {
+      background: rgba(129, 140, 248, 0.24);
+      color: #c7d2fe;
+      border-color: rgba(129, 140, 248, 0.48);
+    }
+
+    .waiting-title {
+      font-weight: 700;
+      margin-bottom: 2px;
+    }
+
+    .waiting-subtext {
+      font-size: 0.92em;
+      opacity: 0.9;
+      line-height: 1.4;
+    }
+
+    .waiting-extra-pill {
+      display: inline-block;
+      margin-top: 5px;
+      padding: 1px 7px;
+      font-size: 11px;
+      font-weight: 600;
+      border-radius: 999px;
+      background: rgba(100, 116, 139, 0.16);
+      color: inherit;
+      opacity: 0.9;
+    }
   </style>
 </head>
 <body>
@@ -423,6 +548,8 @@
       allRight: true,
       persistWorking: true,
       showRunningBubble: true,
+      showWaitingBubble: true,
+      waitingSound: false,
       runningIdleTimeoutMin: 45,
       duration: 8500,
       screenPosition: 'right',
@@ -508,6 +635,10 @@
     }
 
     function watchdogTick() {
+      if (waitingItems.length > 0 && currentConfig.showWaitingBubble !== false) {
+        lastEventAt = Date.now();
+        return;
+      }
       if (!turnRunning || !pinRow || !lastEventAt) {
         if (watchdogTimer) { clearInterval(watchdogTimer); watchdogTimer = null; }
         return;
@@ -588,6 +719,7 @@
     function showPinnedRunning() {
       turnRunning = true;
       if (currentConfig.showRunningBubble === false) return;
+      if (waitingItems.length > 0 && currentConfig.showWaitingBubble !== false) return;
       if (!pinStartedAt) pinStartedAt = Date.now();
       if (!pinRow || !pinRow.isConnected) {
         pinRow = buildPinRow();
@@ -596,6 +728,7 @@
       } else {
         container.appendChild(pinRow);
       }
+      if (waitingRow && waitingRow.isConnected) container.appendChild(waitingRow);
       paintPin();
     }
 
@@ -603,6 +736,196 @@
       if (pinTimer) { clearInterval(pinTimer); pinTimer = null; }
       if (pinRow) { dismissMessage(pinRow); pinRow = null; }
       pinTextEl = null;
+    }
+
+    // ── 常驻「等待批准 / 填写执行方向」提醒气泡 ──────────────────────────
+    let waitingItems = [];
+    let waitingRow = null;
+    let waitingBadgeEl = null;
+    let waitingBadgeTextEl = null;
+    let waitingTimeEl = null;
+    let waitingTitleEl = null;
+    let waitingDetailEl = null;
+    let waitingExtraEl = null;
+    let waitingTimer = null;
+    let waitingPreviewTimer = null;
+    let knownWaitIds = new Set();
+
+    function playWaitingChime() {
+      if (!currentConfig.waitingSound) return;
+      try {
+        const AudioCtx = window.AudioContext || window.webkitAudioContext;
+        if (!AudioCtx) return;
+        const ctx = new AudioCtx();
+        const now = ctx.currentTime;
+        const notes = [587.33, 880]; // D5 -> A5 温和双音
+        notes.forEach((freq, idx) => {
+          const osc = ctx.createOscillator();
+          const gain = ctx.createGain();
+          osc.type = 'sine';
+          osc.frequency.setValueAtTime(freq, now + idx * 0.13);
+          gain.gain.setValueAtTime(0.0001, now + idx * 0.13);
+          gain.gain.exponentialRampToValueAtTime(0.08, now + idx * 0.13 + 0.02);
+          gain.gain.exponentialRampToValueAtTime(0.0001, now + idx * 0.13 + 0.28);
+          osc.connect(gain);
+          gain.connect(ctx.destination);
+          osc.start(now + idx * 0.13);
+          osc.stop(now + idx * 0.13 + 0.3);
+        });
+        setTimeout(() => { try { ctx.close(); } catch (e) {} }, 800);
+      } catch (e) {}
+    }
+
+    function waitingVariantMeta(kind) {
+      if (kind === 'approval') {
+        return {
+          rowClass: 'waiting-approval',
+          badgeClass: 'waiting-approval',
+          badgeText: 'Need Approval',
+          title: '⚠️ 需要你的批准'
+        };
+      }
+      if (kind === 'plan') {
+        return {
+          rowClass: 'waiting-plan',
+          badgeClass: 'waiting-plan',
+          badgeText: 'Plan Review',
+          title: '📋 计划待确认'
+        };
+      }
+      return {
+        rowClass: 'waiting-input',
+        badgeClass: 'waiting-input',
+        badgeText: 'Need Input',
+        title: '✋ 等待你填写执行方向'
+      };
+    }
+
+    function formatWaitElapsed(startedAt) {
+      const secs = Math.max(0, Math.floor((Date.now() - (Number(startedAt) || Date.now())) / 1000));
+      const mm = String(Math.floor(secs / 60)).padStart(2, '0');
+      const ss = String(secs % 60).padStart(2, '0');
+      return `已等待 ${mm}:${ss}`;
+    }
+
+    function buildWaitingRow() {
+      const row = document.createElement('div');
+      row.className = `message-row waiting-pinned ${currentConfig.allRight ? 'right' : getNextSide()}`;
+
+      const avatar = document.createElement('div');
+      avatar.className = 'avatar gemini';
+      const avStyle = resolveAvatarStyle(true);
+      avatar.style.backgroundColor = avStyle.backgroundColor || '';
+      avatar.style.backgroundImage = avStyle.backgroundImage || '';
+      avatar.style.backgroundSize = avStyle.backgroundSize || 'cover';
+      row.appendChild(avatar);
+
+      const bubble = document.createElement('div');
+      bubble.className = 'bubble';
+      bubble.style.fontSize = `${currentConfig.fontSize || 14}px`;
+      bubble.style.fontFamily = resolveFontFamily(currentConfig.fontFamily);
+
+      const bar = document.createElement('div');
+      bar.className = 'badge-bar';
+
+      waitingBadgeEl = document.createElement('div');
+      waitingBadgeEl.className = 'badge waiting-input';
+      const dot = document.createElement('span');
+      dot.className = 'pin-dot';
+      waitingBadgeEl.appendChild(dot);
+      waitingBadgeTextEl = document.createTextNode('Need Input');
+      waitingBadgeEl.appendChild(waitingBadgeTextEl);
+      bar.appendChild(waitingBadgeEl);
+
+      waitingTimeEl = document.createElement('span');
+      waitingTimeEl.className = 'time-label';
+      bar.appendChild(waitingTimeEl);
+      bubble.appendChild(bar);
+
+      waitingTitleEl = document.createElement('div');
+      waitingTitleEl.className = 'waiting-title';
+      bubble.appendChild(waitingTitleEl);
+
+      waitingDetailEl = document.createElement('div');
+      waitingDetailEl.className = 'waiting-subtext';
+      bubble.appendChild(waitingDetailEl);
+
+      waitingExtraEl = document.createElement('div');
+      waitingExtraEl.className = 'waiting-extra-pill';
+      waitingExtraEl.style.display = 'none';
+      bubble.appendChild(waitingExtraEl);
+
+      attachWindowDrag(bubble);
+      row.appendChild(bubble);
+      return row;
+    }
+
+    function paintWaitingRow() {
+      if (!waitingRow || !waitingItems.length) return;
+      const primary = waitingItems[0];
+      const meta = waitingVariantMeta(primary.kind);
+
+      waitingRow.classList.remove('waiting-approval', 'waiting-input', 'waiting-plan');
+      waitingRow.classList.add(meta.rowClass);
+
+      if (waitingBadgeEl) {
+        waitingBadgeEl.className = `badge ${meta.badgeClass}`;
+      }
+      if (waitingBadgeTextEl) {
+        waitingBadgeTextEl.textContent = primary.badge || meta.badgeText;
+      }
+      if (waitingTitleEl) {
+        waitingTitleEl.textContent = primary.title || meta.title;
+      }
+      if (waitingDetailEl) {
+        waitingDetailEl.textContent = primary.detail || '请切回 DSH 对话窗口查看并处理';
+      }
+      if (waitingTimeEl) {
+        waitingTimeEl.textContent = formatWaitElapsed(primary.startedAt);
+      }
+      if (waitingExtraEl) {
+        if (waitingItems.length > 1) {
+          waitingExtraEl.textContent = `另有 ${waitingItems.length - 1} 项待处理`;
+          waitingExtraEl.style.display = 'inline-block';
+        } else {
+          waitingExtraEl.style.display = 'none';
+        }
+      }
+    }
+
+    function hideWaitingBubble() {
+      if (waitingTimer) { clearInterval(waitingTimer); waitingTimer = null; }
+      if (waitingPreviewTimer) { clearTimeout(waitingPreviewTimer); waitingPreviewTimer = null; }
+      if (waitingRow) { dismissMessage(waitingRow); waitingRow = null; }
+      waitingBadgeEl = null;
+      waitingBadgeTextEl = null;
+      waitingTimeEl = null;
+      waitingTitleEl = null;
+      waitingDetailEl = null;
+      waitingExtraEl = null;
+    }
+
+    function syncWaitingUI() {
+      const enabled = currentConfig.showWaitingBubble !== false;
+      if (!enabled || waitingItems.length === 0) {
+        hideWaitingBubble();
+        if (turnRunning && currentConfig.showRunningBubble !== false && (!pinRow || !pinRow.isConnected)) {
+          showPinnedRunning();
+        }
+        return;
+      }
+
+      if (pinRow) hidePinnedRunning();
+      if (!waitingRow || !waitingRow.isConnected) {
+        waitingRow = buildWaitingRow();
+        container.appendChild(waitingRow);
+      } else {
+        container.appendChild(waitingRow);
+      }
+      paintWaitingRow();
+      if (!waitingTimer) {
+        waitingTimer = setInterval(paintWaitingRow, 1000);
+      }
     }
 
     function clearMovableBubbleTimer() {
@@ -673,7 +996,7 @@
       const fontStack = resolveFontFamily(currentConfig.fontFamily);
       document.body.style.fontFamily = fontStack;
 
-      const bubbles = document.querySelectorAll('.bubble, .bubble-text, .badge, .time-label');
+      const bubbles = document.querySelectorAll('.bubble, .bubble-text, .waiting-title, .waiting-subtext, .badge, .time-label');
       bubbles.forEach((b) => {
         b.style.fontFamily = fontStack;
       });
@@ -688,6 +1011,7 @@
       } else if (turnRunning && (!pinRow || !pinRow.isConnected)) {
         showPinnedRunning();
       }
+      syncWaitingUI();
     }
 
     function resolveAvatarStyle(isRight) {
@@ -832,6 +1156,7 @@
       container.appendChild(row);
 
       if (pinRow && pinRow.isConnected) container.appendChild(pinRow);
+      if (waitingRow && waitingRow.isConnected) container.appendChild(waitingRow);
 
       // 按完整码点/字素簇逐字打字，不拆断 Emoji 代理对
       const chars = splitGraphemes(text);
@@ -898,7 +1223,7 @@
     const MAX_BUBBLES = 5;
 
     function enforceMaxBubbles() {
-      const alive = Array.from(container.querySelectorAll('.message-row:not(.exit):not(.pinned):not(.movable-hint)'));
+      const alive = Array.from(container.querySelectorAll('.message-row:not(.exit):not(.pinned):not(.waiting-pinned):not(.movable-hint)'));
       let overflow = alive.length + 1 - MAX_BUBBLES;
       for (let i = 0; i < alive.length && overflow > 0; i++, overflow--) {
         dismissMessage(alive[i]);
@@ -916,6 +1241,29 @@
       if (!data || typeof data !== 'object') return;
 
       if (data.type === 'testBubble') {
+        const mode = data.mode || 'preview';
+        if (mode === 'waiting_approval' || mode === 'waiting_input' || mode === 'waiting_plan') {
+          const kind = mode === 'waiting_approval' ? 'approval' : mode === 'waiting_plan' ? 'plan' : 'input';
+          const meta = waitingVariantMeta(kind);
+          if (waitingPreviewTimer) { clearTimeout(waitingPreviewTimer); waitingPreviewTimer = null; }
+          waitingItems = [{
+            id: `preview-${Date.now()}`,
+            kind,
+            badge: meta.badgeText,
+            title: meta.title,
+            detail: data.text || '请切回 DSH 对话窗口查看并处理（预览）',
+            startedAt: Date.now()
+          }];
+          syncWaitingUI();
+          playWaitingChime();
+          waitingPreviewTimer = setTimeout(() => {
+            waitingPreviewTimer = null;
+            waitingItems = waitingItems.filter((item) => !String(item.id).startsWith('preview-'));
+            syncWaitingUI();
+          }, 6000);
+          return;
+        }
+
         createMessage({
           badgeType: 'completed',
           badgeText: 'Preview',
@@ -924,6 +1272,29 @@
           isWorking: false,
           duration: Number(currentConfig.duration) || 8500
         });
+        return;
+      }
+
+      if (data.type === 'waitingStatus') {
+        if (waitingPreviewTimer) { clearTimeout(waitingPreviewTimer); waitingPreviewTimer = null; }
+        const nextItems = Array.isArray(data.items) ? data.items : [];
+        let hasNewWait = false;
+        const nextIds = new Set();
+        for (const item of nextItems) {
+          if (item && item.id) {
+            nextIds.add(item.id);
+            if (!knownWaitIds.has(item.id)) hasNewWait = true;
+          }
+        }
+        knownWaitIds = nextIds;
+        waitingItems = nextItems;
+        if (nextItems.length > 0) {
+          noteEvent();
+        }
+        syncWaitingUI();
+        if (hasNewWait && currentConfig.showWaitingBubble !== false) {
+          playWaitingChime();
+        }
         return;
       }
 

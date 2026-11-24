@@ -189,6 +189,16 @@ test('createControlServer enforces Origin allowlist, token auth, body limit, and
     assert.equal(noTok.status, 401);
     assert.equal(noTok.headers['access-control-allow-origin'], 'http://127.0.0.1:56150');
 
+    // DSH Desktop renderer custom scheme origin (dsh-app://app) -> 200
+    const dshAppRes = await httpReq({
+      port,
+      method: 'GET',
+      pathname: '/api/config',
+      headers: { Origin: 'dsh-app://app', 'X-DSH-HUD-Token': token }
+    });
+    assert.equal(dshAppRes.status, 200);
+    assert.equal(dshAppRes.headers['access-control-allow-origin'], 'dsh-app://app');
+
     // Valid token + loopback origin -> 200
     const patchRes = await httpReq({
       port,
@@ -335,4 +345,237 @@ test('cleanFontName filters PowerShell metadata properties and style suffixes', 
   assert.equal(cleanFontName('PSChildName'), '');
   assert.equal(cleanFontName('@SimSun (TrueType)'), '');
   assert.equal(cleanFontName('Microsoft YaHei Bold (TrueType)'), 'Microsoft YaHei');
+});
+
+test('sanitizeConfigPatch and /api/test-bubble support waiting reminder options and preview mode', async () => {
+  const clean = sanitizeConfigPatch({ showWaitingBubble: false, waitingSound: true });
+  assert.equal(clean.showWaitingBubble, false);
+  assert.equal(clean.waitingSound, true);
+
+  let cfg = { ...DEFAULT_CONFIG };
+  const testBubbleCalls = [];
+  const token = 'b'.repeat(64);
+  const server = createControlServer({
+    token,
+    getConfig: () => cfg,
+    onConfigPatch: (patch) => {
+      cfg = { ...cfg, ...patch };
+      return cfg;
+    },
+    onTestBubble: (payload) => testBubbleCalls.push(payload),
+    getFonts: async () => ['Arial']
+  });
+
+  await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
+  const { port } = server.address();
+
+  try {
+    const res = await httpReq({
+      port,
+      method: 'POST',
+      pathname: '/api/test-bubble',
+      headers: { 'Content-Type': 'application/json', 'X-DSH-HUD-Token': token },
+      body: JSON.stringify({ mode: 'waiting_approval', text: 'bash：需要审批' })
+    });
+    assert.equal(res.status, 200);
+    assert.equal(testBubbleCalls.length, 1);
+    assert.equal(testBubbleCalls[0].mode, 'waiting_approval');
+    assert.equal(testBubbleCalls[0].text, 'bash：需要审批');
+
+    const fallbackMode = await httpReq({
+      port,
+      method: 'POST',
+      pathname: '/api/test-bubble',
+      headers: { 'Content-Type': 'application/json', 'X-DSH-HUD-Token': token },
+      body: JSON.stringify({ mode: 'unknown_mode' })
+    });
+    assert.equal(fallbackMode.status, 200);
+    assert.equal(testBubbleCalls[1].mode, 'preview');
+  } finally {
+    await new Promise((resolve) => server.close(resolve));
+  }
+});
+
+test('createEventStore tracks approval/asked + waterfall dedup and clears on approval/decided', () => {
+  let fakeNow = 1000;
+  const store = createEventStore({ maxEvents: 30, initialSeq: 10, now: () => fakeNow });
+
+  store.handleSessionEvent({ id: 'sess-1' }, { type: 'turn/start' });
+  store.handleSessionEvent({ id: 'sess-1' }, {
+    type: 'approval/asked',
+    data: { id: 'appr-1', toolName: 'bash', callId: 'call-1', reason: '需要执行 npm test' }
+  });
+
+  assert.equal(store.waitingCount, 1);
+  let state = store.getState(0);
+  assert.equal(state.sections.waitingStatus.data.count, 1);
+  assert.equal(state.sections.waitingStatus.data.items[0].kind, 'approval');
+  assert.match(state.sections.waitingStatus.data.items[0].detail, /bash：需要执行 npm test/);
+
+  // Waterfall arrives for the same approval call -> must deduplicate instead of counting 2
+  fakeNow += 50;
+  const waitId = store.beginApprovalWait('sess-1', {
+    toolName: 'bash',
+    callId: 'call-1',
+    displayReason: { en: 'Run tests', 'zh-CN': '运行测试套件' }
+  }, { fromWaterfall: true });
+  assert.equal(store.waitingCount, 1);
+  state = store.getState(0);
+  assert.match(state.sections.waitingStatus.data.items[0].detail, /运行测试套件/);
+
+  // Waterfall finish or approval/decided clears the wait
+  store.handleSessionEvent({ id: 'sess-1' }, {
+    type: 'approval/decided',
+    data: { id: 'appr-1', outcome: 'allowed-once' }
+  });
+  store.endWait(waitId);
+  assert.equal(store.waitingCount, 0);
+  assert.equal(store.getState(0).sections.waitingStatus.data.count, 0);
+});
+
+test('createEventStore classifies user-question intents (approval, plan-review, input) and deduplicates tool/call', () => {
+  let fakeNow = 2000;
+  const store = createEventStore({ maxEvents: 30, initialSeq: 20, now: () => fakeNow });
+
+  // 1. ask_user_question tool/call must NOT emit misleading working status
+  const tcEvents = store.handleSessionEvent({ id: 'sess-q' }, {
+    type: 'tool/call',
+    data: {
+      name: 'ask_user_question',
+      callId: 'call-q1',
+      arguments: JSON.stringify({
+        questions: [{ id: 'q1', header: '执行方式', question: '请选择数据库迁移策略', options: [] }]
+      })
+    }
+  });
+  assert.equal(tcEvents.some((e) => e.kind === 'workStatus'), false);
+  assert.equal(store.waitingCount, 1);
+  assert.equal(store.getState(0).sections.waitingStatus.data.items[0].kind, 'input');
+
+  // Matching waterfall merges with tool/call wait
+  const qWaitId = store.beginUserQuestionWait('sess-q', {
+    wait: { callId: 'call-q1' },
+    questions: [
+      { id: 'q1', header: '执行方式', question: '请选择数据库迁移策略' },
+      { id: 'q2', header: '回滚', question: '是否开启备份' }
+    ]
+  }, { fromWaterfall: true });
+  assert.equal(store.waitingCount, 1);
+  assert.match(store.getState(0).sections.waitingStatus.data.items[0].detail, /共 2 项/);
+  store.endWait(qWaitId, { force: true });
+  assert.equal(store.waitingCount, 0);
+
+  // 2. approval intent via userQuestions
+  const aWaitId = store.beginUserQuestionWait('sess-q', {
+    questions: [{
+      id: 'perm-1',
+      question: 'Allow write?',
+      intent: {
+        kind: 'approval',
+        approve: 'Allow',
+        reject: 'Deny',
+        subject: { name: 'filesystem' },
+        display: { question: { en: 'Allow file write', 'zh-CN': '允许写入配置文件' } }
+      }
+    }]
+  }, { fromWaterfall: true });
+  assert.equal(store.getState(0).sections.waitingStatus.data.items[0].kind, 'approval');
+  assert.match(store.getState(0).sections.waitingStatus.data.items[0].detail, /filesystem：允许写入配置文件/);
+  store.endWait(aWaitId, { force: true });
+
+  // 3. exit_plan_mode tool/call + plan-review intent
+  const planEvents = store.handleSessionEvent({ id: 'sess-q' }, {
+    type: 'tool/call',
+    data: { name: 'exit_plan_mode', callId: 'call-plan' }
+  });
+  assert.equal(planEvents.some((e) => e.kind === 'workStatus'), false);
+  assert.equal(store.getState(0).sections.waitingStatus.data.items[0].kind, 'plan');
+  const pWaitId = store.beginUserQuestionWait('sess-q', {
+    wait: { callId: 'call-plan' },
+    questions: [{
+      id: 'plan-review',
+      question: '请确认重构方案并批准执行',
+      intent: { kind: 'plan-review', approve: 'Approve' }
+    }]
+  }, { fromWaterfall: true });
+  assert.equal(store.waitingCount, 1);
+  assert.match(store.getState(0).sections.waitingStatus.data.items[0].detail, /重构方案/);
+  store.endWait(pWaitId, { force: true });
+  assert.equal(store.waitingCount, 0);
+});
+
+test('createEventStore keeps timed pending ask_user_question alive across tool/result and turn/end until user-question-reply', () => {
+  const store = createEventStore({ maxEvents: 40, initialSeq: 30 });
+
+  store.handleSessionEvent({ id: 'sess-t' }, { type: 'turn/start' });
+  store.handleSessionEvent({ id: 'sess-t' }, {
+    type: 'tool/call',
+    data: {
+      name: 'ask_user_question',
+      callId: 'call-timed-1',
+      arguments: JSON.stringify({
+        questions: [{ id: 'dir', header: '执行方向', question: '接下来想优先修哪一块？' }]
+      })
+    }
+  });
+  const waitId = store.beginUserQuestionWait('sess-t', {
+    wait: { callId: 'call-timed-1', timed: true },
+    questions: [{ id: 'dir', header: '执行方向', question: '接下来想优先修哪一块？' }]
+  }, { fromWaterfall: true });
+
+  // Foreground timed wait expires -> tool/result carries { pending: true }
+  const resEvents = store.handleSessionEvent({ id: 'sess-t' }, {
+    type: 'tool/result',
+    data: {
+      message: {
+        toolCallId: 'call-timed-1',
+        content: [{ type: 'text', text: JSON.stringify({ pending: true, callId: 'call-timed-1', message: 'waiting' }) }]
+      }
+    }
+  });
+  // Must NOT falsely emit Step Done result
+  assert.equal(resEvents.some((e) => e.kind === 'workStatus' && e.payload.state === 'result'), false);
+  // Waterfall endWait (non-forced) must NOT dismiss a continued question
+  store.endWait(waitId);
+  assert.equal(store.waitingCount, 1);
+  assert.equal(store.getState(0).sections.waitingStatus.data.items[0].continued, true);
+
+  // Even after turn/end completes, continued question must remain waiting and not emit idle
+  const endEvents = store.handleSessionEvent({ id: 'sess-t' }, { type: 'turn/end', data: { reason: 'done' } });
+  assert.equal(store.waitingCount, 1);
+  assert.equal(endEvents.some((e) => e.kind === 'workStatus' && e.payload.state === 'idle'), false);
+
+  // User finally submits reply -> waiting clears
+  store.handleSessionEvent({ id: 'sess-t' }, {
+    type: 'user/message',
+    data: { source: { kind: 'user-question-reply', callId: 'call-timed-1', outcome: 'answered' } }
+  });
+  assert.equal(store.waitingCount, 0);
+  assert.equal(store.getState(0).sections.waitingStatus.data.count, 0);
+});
+
+test('createEventStore preserves waiting session when another concurrent session finishes and prevents stale expiry', () => {
+  let fakeNow = 5000;
+  const store = createEventStore({
+    maxEvents: 40,
+    initialSeq: 40,
+    sessionStaleMs: 60_000,
+    now: () => fakeNow
+  });
+
+  store.handleSessionEvent({ id: 'sess-wait' }, { type: 'turn/start' });
+  store.beginApprovalWait('sess-wait', { toolName: 'bash', reason: '需要批准提权' }, { fromWaterfall: true });
+
+  // Concurrent session B runs and completes
+  store.handleSessionEvent({ id: 'sess-bg' }, { type: 'turn/start' });
+  store.handleSessionEvent({ id: 'sess-bg' }, { type: 'tool/call', data: { name: 'read_file' } });
+  const bgEnd = store.handleSessionEvent({ id: 'sess-bg' }, { type: 'turn/end', data: { reason: 'done' } });
+
+  assert.equal(store.waitingCount, 1);
+  assert.equal(bgEnd.some((e) => e.kind === 'workStatus' && e.payload.state === 'idle'), false);
+
+  // Advance clock past sessionStaleMs: waiting session must NOT expire while waiting for user
+  fakeNow += 120_000;
+  assert.equal(store.activeCount, 1);
+  assert.equal(store.waitingCount, 1);
 });

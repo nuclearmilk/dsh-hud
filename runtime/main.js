@@ -97,11 +97,12 @@ function startLocalControlServer() {
     token: CONTROL_TOKEN,
     getConfig: () => hudConfig,
     onConfigPatch: (patch) => saveConfigPatch(patch),
-    onTestBubble: ({ text }) => {
+    onTestBubble: ({ text, mode }) => {
       if (mainWindow && !mainWindow.isDestroyed()) {
         mainWindow.webContents.send(CHANNELS.EVENT, {
           type: 'testBubble',
           text,
+          mode: mode || 'preview',
           timestamp: Date.now()
         });
       }
@@ -257,6 +258,7 @@ function startParentWatchdog() {
 let lastCounter = 0;
 let lastWorkCounter = 0;
 let lastNotifyCounter = 0;
+let lastWaitingCounter = 0;
 let isPolling = false;
 
 const ENV_DSH_PORT = parseInt(process.env.DSH_HUD_PORT || '0', 10) || 0;
@@ -446,6 +448,16 @@ async function startEventPolling() {
           if (data.counter) lastCounter = data.counter;
           if (data.sections?.workStatus?.counter) lastWorkCounter = data.sections.workStatus.counter;
           if (data.sections?.notify?.counter) lastNotifyCounter = data.sections.notify.counter;
+          if (data.sections?.waitingStatus?.counter) lastWaitingCounter = data.sections.waitingStatus.counter;
+          const initWaiting = data.sections?.waitingStatus?.data;
+          if (initWaiting && initWaiting.count > 0 && mainWindow && !mainWindow.isDestroyed()) {
+            mainWindow.webContents.send(CHANNELS.EVENT, {
+              type: 'waitingStatus',
+              count: initWaiting.count,
+              items: Array.isArray(initWaiting.items) ? initWaiting.items : [],
+              timestamp: Date.now()
+            });
+          }
           baselined = true;
         }
         continue;
@@ -496,6 +508,16 @@ function forwardEventItem(item) {
         timestamp: item.ts || Date.now()
       });
     }
+    return;
+  }
+
+  if (item.kind === 'waitingStatus' && item.payload) {
+    mainWindow.webContents.send(CHANNELS.EVENT, {
+      type: 'waitingStatus',
+      count: item.payload.count ?? 0,
+      items: Array.isArray(item.payload.items) ? item.payload.items : [],
+      timestamp: item.ts || Date.now()
+    });
   }
 }
 
@@ -511,6 +533,8 @@ function handleStateUpdate(data) {
         lastWorkCounter = Math.max(lastWorkCounter, item.seq);
       } else if (item.kind === 'notify' && typeof item.seq === 'number') {
         lastNotifyCounter = Math.max(lastNotifyCounter, item.seq);
+      } else if (item.kind === 'waitingStatus' && typeof item.seq === 'number') {
+        lastWaitingCounter = Math.max(lastWaitingCounter, item.seq);
       }
     }
     return;
@@ -520,6 +544,20 @@ function handleStateUpdate(data) {
   const sections = data.sections || {};
   const workLeaf = sections.workStatus;
   const notifyLeaf = sections.notify;
+  const waitingLeaf = sections.waitingStatus;
+
+  if (waitingLeaf && typeof waitingLeaf.counter === 'number' && waitingLeaf.counter > lastWaitingCounter) {
+    lastWaitingCounter = waitingLeaf.counter;
+    const wData = waitingLeaf.data;
+    if (wData) {
+      mainWindow.webContents.send(CHANNELS.EVENT, {
+        type: 'waitingStatus',
+        count: wData.count ?? 0,
+        items: Array.isArray(wData.items) ? wData.items : [],
+        timestamp: Date.now()
+      });
+    }
+  }
 
   if (workLeaf && typeof workLeaf.counter === 'number' && workLeaf.counter > lastWorkCounter) {
     lastWorkCounter = workLeaf.counter;
