@@ -1,24 +1,47 @@
-# dsh-hud · 任务通知流HUD
+# dsh-hud · 任务通知流 HUD
 
-为 **DeepSeek Harness** 打造的屏幕贴边任务通知流。群唱（Cappella）风格的水润毛玻璃气泡会在屏幕边缘实时浮出，汇报 `THINKING` / `WORKING` / `STEP DONE` / `COMPLETED` 四类进度，像聊天一样陪着你干活。
+[![Release](https://img.shields.io/github/v/release/nuclearmilk/dsh-hud?style=flat-square&color=8b5cf6)](https://github.com/nuclearmilk/dsh-hud/releases)
+[![Test & Release](https://img.shields.io/github/actions/workflow/status/nuclearmilk/dsh-hud/release.yml?branch=main&style=flat-square&label=CI%20%26%20Release)](https://github.com/nuclearmilk/dsh-hud/actions/workflows/release.yml)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue?style=flat-square)](LICENSE)
 
-![任务通知流 HUD 演示](docs/demo.gif)
+为 **DeepSeek Harness (DSH)** 打造的屏幕贴边任务通知流 HUD。群唱（Cappella）风格的水润毛玻璃气泡会在屏幕边缘实时浮出，不仅汇报 `THINKING` / `WORKING` / `STEP DONE` / `COMPLETED` 与长任务 `RUNNING` 计时，更能在 **需要你批准权限、填写执行方向或确认计划** 时置顶弹出高对比脉冲强提醒，防止挂在后台时忘记处理。
+
+![dsh-hud 全功能演示](docs/demo.gif)
+
+---
+
+## 状态一览
+
+| 气泡徽章 | 触发时机 | 视觉与行为 |
+| --- | --- | --- |
+| `THINKING` | 新一轮对话开始（`turn/start`） | 紫色徽章 + 扫光动效，7 秒自动淡出 |
+| `WORKING` | 工具调用中（`tool/call`） | 琥珀色徽章 + 扫光动效，可开启全程常驻 |
+| `STEP DONE` | 单步工具返回（`tool/result`） | 青蓝色徽章，短句轻快反馈，7 秒淡出 |
+| `COMPLETED` | 本轮结束（`turn/end`） | 翠绿色徽章，截取最终回复摘要展示 |
+| `RUNNING` | 本轮尚未结束时的常驻状态 | 底部脉冲绿/琥珀点，实时显示 `已运行 mm:ss`（可关，默认开启） |
+| `NEED APPROVAL` | 需要批准命令/提权/权限确认卡 | **珊瑚红高对比呼吸边框**，显示工具名与原因 + `已等待 mm:ss` |
+| `NEED INPUT` | `ask_user_question` 等待选择或填写方向 | **琥珀橙高对比呼吸边框**，显示问题摘要（含 `timed` 超时挂起态） |
+| `PLAN REVIEW` | 计划模式 `exit_plan_mode` 等待确认 | **靛紫色高对比呼吸边框**，提示审阅执行计划 |
+
+> 进入 `NEED APPROVAL` / `NEED INPUT` / `PLAN REVIEW` 等待人工处理状态时，HUD 会**自动暂时隐藏 `RUNNING` 气泡**并**暂停 45 分钟静默自动收起**，避免“还在运行”的错觉；多会话同时卡住等待时还会显示 `另有 N 项待处理`。
+
+---
 
 ## 特性
 
-- 🫧 **Cappella 水润毛玻璃**：高斯模糊 + 内发光边框，通透不糊字
-- 🎨 **明暗双主题**：☀️ 纯净白色毛玻璃 / 🌙 深邃暗色磨砂（徽章与控件全量适配对比度）
-- 🎚️ **无级透明度**：20% ~ 100% 拖动实时生效
-- ✋ **自由拖拽并记忆位置**：移动模式随手拖，锁定后坐标不回弹；支持多显示器智能边界钳位，拔掉副屏坐标不跑丢
-- 🎭 **个性化头像**：莫奈渐变、纯色（选色轮盘 / 直接输入 `#8b5cf6`）、本地图片上传（前端自动居中裁剪压缩为轻量 WebP/PNG）
-- 🔤 **系统字体全量检索**：跨平台（Windows / macOS / Linux）自动检索本机已安装字体并带内存缓存，切换即时生效
-- 💬 **左右分边或整齐靠右**：`allRight` 关闭时气泡左右交替弹出，模拟对话节奏
-- ⚡ **四态精细化**：`THINKING` 7 秒自动淡出，`WORKING` 全程常驻，`STEP DONE` 短句小结，`COMPLETED` 输出摘要
-- ⏳ **常驻「进行中」气泡**：本轮没结束就一直挂一条 `任务进行中 · 已运行 mm:ss`，长任务不会看起来像已经跑完；设置页可关，**默认开启**
-  · **静默兜底**：超过设定时长（默认 45 分钟）没有任何进度事件就自动收起并留一条说明，避免宿主异常时气泡永久挂着
-- 🚨 **等待批准 / 填写方向常驻强提醒**：当任务阻塞在需要你批准权限（`NEED APPROVAL`）、选择或填写执行方向（`NEED INPUT`，含定时提问挂起态）或确认计划（`PLAN REVIEW`）时，自动置顶高对比脉冲气泡并累计 `已等待 mm:ss`，暂停静默自动收起直到你处理完毕；可选轻柔提示音，设置页支持「🔔 预览等待提醒」
-- 🫧 **一键预览测试气泡**：设置页提供「发送测试气泡」与「预览等待提醒」按钮，无需等任务触发即可直观预览气泡位置、字号与色彩
-- 🛡️ **工业级安全与进程隔离**：Electron 窗口完全开启 `contextIsolation: true` + `sandbox: true` + `nodeIntegration: false`，仅暴露受控 preload 接口；本地控制端口启用随机 Token 鉴权、回环 Origin 校验与字段白名单防注入
+- 🚨 **等待批准 / 填写方向常驻强提醒（v1.8.0）**：
+  - 宿主侧通过 Cordis waterfall（`approval/request`、`user-questions/request`）透明观测 + `session/event` 双通道去重，零侵入捕获权限审批、自由提问与计划确认。
+  - 独立置顶槽位，不会被普通进度气泡或 `MAX_BUBBLES` 顶掉；定时提问（`timed`）超时转入挂起态后仍持续提醒，直到你提交回复。
+  - 支持「**等待操作时播放轻柔提示音**」（Web Audio 合成，零外部依赖，设置页可开关）。
+- 🫧 **Cappella 水润毛玻璃 & 明暗双主题**：高斯模糊 + 内发光边框，☀️ 纯净白色毛玻璃 / 🌙 深邃暗色磨砂全量适配高对比配色。
+- 🎚️ **无级透明度 & 自由拖拽记忆坐标**：20% ~ 100% 拖动实时生效；移动模式随手拖，支持多显示器智能边界钳位，拔掉副屏坐标不跑丢。
+- 🎭 **个性化头像 & 系统字体全量检索**：莫奈渐变、纯色轮盘 / Hex 输入、本地图片居中裁剪压缩（WebP/PNG/动图 GIF）；跨平台自动检索本机已安装字体并带缓存。
+- 💬 **左右分边或整齐靠右**：`allRight` 关闭时气泡左右交替弹出，模拟对话节奏。
+- ⏳ **常驻「进行中」气泡 & 静默兜底**：长任务一直显示 `已运行 mm:ss`；普通进度超过设定分钟数（默认 45）无事件自动收起。
+- 🔔 **设置页一键预览**：支持「**🫧 发送测试气泡**」与「**🔔 预览等待提醒**」，无需真实触发任务即可调优外观。
+- 🛡️ **工业级安全与进程隔离**：Electron 窗口启用 `contextIsolation: true` + `sandbox: true` + `nodeIntegration: false`，仅通过受控 `preload.js` 桥接；本地控制端口仅监听 `127.0.0.1:52399`，启用随机 `X-DSH-HUD-Token` 鉴权、回环与 `dsh-app://` Origin 白名单、2 MB 请求体限额与配置字段白名单。
+
+---
 
 ## 安装
 
@@ -27,9 +50,9 @@
 桌面版的 `desktop` profile 由 Electron 应用独占，命令行无法管理它，**请用界面安装**：
 
 1. 打开 DSH → **设置** → **插件** → **添加插件**
-2. 安装方式选 **Git**，把下面这一整行粘进输入框（不要带尖括号、不要带中文说明）：
+2. 安装方式选 **Git**，把下面这一整行粘进输入框：
 
-   ```
+   ```text
    https://github.com/nuclearmilk/dsh-hud
    ```
 
@@ -37,136 +60,76 @@
 4. **重启 DSH**（气泡是独立 Electron 进程，由宿主插件在启动时拉起）
 5. 设置侧栏出现 **「任务通知流HUD」** 页 = 装好了
 
-不想用 git 也能装：[Releases](https://github.com/nuclearmilk/dsh-hud/releases) 页面提供打包好的 `dsh-hud-<版本>.tgz`，安装框里同样支持直接粘它的下载地址。
-想钉死版本（推荐写进 issue、教程、给别人复现时用）——用 tag 或 commit hash：
+也可以前往 [Releases](https://github.com/nuclearmilk/dsh-hud/releases) 直接粘贴最新版 `dsh-hud-<版本>.tgz` 下载链接安装，或用 tag / commit 锁定版本：
 
-```
+```text
 https://github.com/nuclearmilk/dsh-hud#v1.8.0
 ```
 
-```
-https://github.com/nuclearmilk/dsh-hud#<commit hash，从 Commits 页复制>
-```
-
-`#` 后面不写也可以，那就是装默认分支最新代码，适合自己追踪开发版。
-
 ### 命令行（仅非 `desktop` profile，例如 `tui`）
-
-`dsh plugin` 会把参数原样转发给 pnpm，`--profile` 是**必填**参数：
 
 ```sh
 dsh plugin --profile tui add https://github.com/nuclearmilk/dsh-hud
 ```
 
-对 `desktop` 执行这条会直接报错，这是设计如此：
+> 对 `desktop` 执行 `dsh plugin` 会报错 `profile "desktop" is managed exclusively by the Electron application`，属设计如此。
 
-```
-error: profile "desktop" is managed exclusively by the Electron application
-```
-
-### 已在本地改代码时（link 方式）
-
-不想每次改都重装，就把 profile 里的依赖指到本地目录，改完重启 DSH 即可：
+### 本地开发联调（link 方式）
 
 ```sh
 dsh plugin --profile tui add link:/path/to/dsh-hud
 ```
+
+---
 
 ## 更新与卸载
 
 | 操作 | 做法 |
 | --- | --- |
 | 更新（Git / link 安装） | 界面里先卸载再装一次；link 方式直接 `git pull` 后重启 DSH |
-| 更新（npm 安装） | 插件列表里点 **Update**（仅官方按需插件提供显式更新） |
+| 更新（Releases `.tgz`） | 用新版 `.tgz` 链接重新添加或卸载后重装 |
 | 卸载 | 设置 → 插件 → 选中 `dsh-hud` → 卸载 → 重启 DSH |
 
-## 装不上或有界面没气泡
+---
+
+## 常见排查
 
 | 现象 | 原因 | 处理 |
 | --- | --- | --- |
 | 安装时提示 spec 无效 | 输入框里留了模板文本 | 只保留 `https://github.com/nuclearmilk/dsh-hud` |
-| `could not read Username` / 403 | 仓库不可公开访问 | 必须用公开仓库；私有仓库的 git 安装需要配置凭据 |
-| 升级后界面还是旧样子 | 上一轮 DSH 留下的气泡窗口是 detached 进程，会占着 52399 让新窗口自行退出 | 1.4.2 起启动时会自动向旧实例发 `/api/quit` 并等端口释放；若仍在，手动结束 `electron.exe` 后重启 DSH |
-| 设置里有页面，但屏幕上没有气泡 | 极少数情况下宿主不是 Electron（CLI / web profile） | 见下一节；桌面版不需要处理 |
-| 设置了透明度/主题但没变化 | 桌面窗口没起来，改的是配置不是画面 | 同上 |
+| 升级后界面还是旧样子 | 上一轮留下的气泡进程占着 52399 | 1.4.2+ 会自动请求 `/api/quit`；若仍占用，手动结束 `electron.exe` 后重启 DSH |
+| 设置页提示未连接但屏幕有气泡 | 控制端口源白名单未匹配或新窗口尚未就绪 | 升级到 v1.8.0+（已放行 `dsh-app://` 桌面源）并点「重试连接」 |
+| 设置里有页面，但屏幕上没有气泡 | 宿主非 Electron 或未获取到 Electron 运行时 | 见下一节运行时获取说明；查看设置页橙色提示 |
 
-## 运行方式：不需要装任何其他东西
+---
 
-桌面版装完即可用，**不需要预先安装 Electron，也不需要 dsh-pet 之类的插件**。缺运行时时插件会自己取一份（首次约 138 MB，之后复用）：
+## 运行方式：零外部插件依赖
 
-```
-[dsh-hud] 未找到 Electron 运行时，正在从 registry.npmmirror.com 获取 electron 43.3.0
-[dsh-hud] Electron 运行时下载 20% (27.6/137.7 MB)
-...
-[dsh-hud] Electron 运行时就绪：~/.dsh/electron/electron.exe
-```
+桌面版装完即可用，**不需要预先安装 Electron 或其他配套插件**。缺少运行时会自动下载一份共享运行时到 `~/.dsh/electron/`（首次约 138 MB，之后复用）：
 
-- **自动选最快的源**：开跑前对 GitHub、npmmirror、华为云**并行测速**（各取 512 KB，从首字节计时并设总超时上限），用测出来的第一名下载，其余按名次兜底。自动识别 `HTTP_PROXY` / `HTTPS_PROXY` / `NO_PROXY` 环境变量，开着代理时通常 GitHub 最快，直连中国大陆时通常镜像最快——不用你手动选
-- **指定源**：`DSH_HUD_ELECTRON_MIRROR` 可强制某个镜像排在最前（支持 `https://` 与内网 `http://` 镜像）
-- **断点续传 + 校验**：中断后保留 `<包名>.zip.part` 供下次续传（换源也能接着下），下载完毕校验 `SHASUMS256.txt` 后再重命名为 `.zip` 解压；校验或解压失败自动清理损坏文件并切下一个源
-- **过期锁自愈**：`.download.lock` 内记录 PID 与时间戳，防止并发重复下载，且异常强杀残留的过期锁会自动回收
-- **自定义位置**：`DSH_HUD_ELECTRON_DIR` 改存放目录，`DSH_HUD_ELECTRON_VERSION` 改版本
+- **并行测速选源**：GitHub / npmmirror / 华为云并行测速（各取 512 KB），自动选择最快源并遵循 `HTTP_PROXY` / `HTTPS_PROXY` / `NO_PROXY`。
+- **断点续传 + SHA-256 校验**：`.zip.part` 断线续传，下载后自动校验 `SHASUMS256.txt` 并解压；`.download.lock` 带过期与死 PID 自愈。
+- **自定义路径与镜像**：支持 `DSH_HUD_ELECTRON`、`DSH_HUD_ELECTRON_DIR`、`DSH_HUD_ELECTRON_VERSION`、`DSH_HUD_ELECTRON_MIRROR`。
 
-查不到就用现成的，按以下顺序（`lib/index.js` 的 `resolveElectron`）：
+> 为什么单独拉起 Electron 窗口：DSH 桌面宿主以 `ELECTRON_RUN_AS_NODE=1` 模式加载插件，`require('electron')` 无法取得 `BrowserWindow`，因此需要一份独立的 Electron 运行时承载透明置顶气泡窗。
 
-1. 环境变量 `DSH_HUD_ELECTRON` 指定的路径
-2. 共享运行时目录 `~/.dsh/electron/`（自动下载也放这里，`DSH_HUD_ELECTRON_DIR` 可改）
-3. 当前 DSH profile 的 `node_modules/electron/dist/`（含 pnpm 的 `.pnpm` 软链布局）
-4. 本插件包自身的 `node_modules/electron/dist/`
-5. 仅当宿主进程本身就是 `electron.exe` 时才复用 `process.execPath`
-
-全都拿不到时插件不会报错，DSH 照常运行，只是不会出现桌面气泡；插件日志会打印 `WARN` 说明原因，设置页也会亮橙色提示。
-
-> 为什么不用宿主自带的 Electron：桌面宿主把 dsh runtime 放在 **Node 模式的 Electron 子进程**里加载插件（`ELECTRON_RUN_AS_NODE=1`），那个进程 `require('electron')` 会直接 `MODULE_NOT_FOUND`，拿不到 `BrowserWindow`。所以气泡必须由一份真正的 Electron 运行时来承载。
-
-手动准备运行时（离线机器 / 想自己控制版本）：
-
-```powershell
-# A. 显式指定已有 electron
-$env:DSH_HUD_ELECTRON = "C:\path\to\electron.exe"
-
-# B. 把运行时放到约定目录，所有插件共用
-#    ~/.dsh/electron/electron.exe      （Windows）
-#    ~/.dsh/electron/Electron.app/Contents/MacOS/Electron  （macOS）
-#    ~/.dsh/electron/electron          （Linux）
-
-# C. 换镜像（国内常见做法）
-$env:DSH_HUD_ELECTRON_MIRROR = "https://registry.npmmirror.com/-/binary/electron"
-```
+---
 
 ## 启动性能
 
-插件自身的启动开销很小，实测（本机）：
+- **模块导入 `lib/index.js`**：约 60 ms（冷）/ 2 ms（热）
+- **`apply()` 同步部分**：约 2.0 ms
+- **气泡窗口默认延迟 3 秒拉起**（`DSH_HUD_SPAWN_DELAY_MS` 可调为 `0`），不与 DSH 主界面抢启动 IO；启动耗时探针日志位于 `~/.dsh/dsh-hud/boot.log`。
 
-| 环节 | 耗时 |
-|---|---|
-| 模块导入 `lib/index.js` | 60 ms（冷）/ 2 ms（热） |
-| `apply()` 同步部分 | **2.0 ms** |
-| 气泡窗口 Electron 冷启动（spawn → 可响应） | 0.78 s |
+---
 
-为了不和 DSH 自己的启动抢磁盘与 CPU，**气泡窗口默认在插件挂载后延迟 3 秒才拉起**。想改：
-
-```powershell
-# 0 = 立即拉起；也可以调大（毫秒）
-$env:DSH_HUD_SPAWN_DELAY_MS = "0"
-```
-
-排查「DSH 启动慢」时，可以看这份日志——它记录宿主启动后多久轮到本插件（`uptime`）：
-
-```
-~/.dsh/dsh-hud/boot.log
-2026-11-12T11:29:24.104Z uptime=0.1s pid=2536 apply enter
-2026-11-12T11:29:24.105Z uptime=0.1s pid=2536 apply done, hud spawn scheduled in 3000ms
-2026-11-12T11:29:27.108Z uptime=3.1s pid=2536 hud spawned via ...electron.exe
-```
-
-如果 `uptime` 已经很大（例如 45 秒），说明这段时间花在**本插件之前**的加载阶段，与本插件无关。
 ## 数据与隐私
 
-- 配置统一保存在系统应用数据目录（`<appData>/dsh-hud/dsh-hud-config.json`），不写入插件包目录；首次升级会自动迁移旧路径配置
-- 不联网、不上报：全部事件来自本机 DSH 的 `session/event`，气泡数据只在本机进程间流转
-- 本地控制接口仅监听 `127.0.0.1:52399`（可通过 `DSH_HUD_CONTROL_PORT` 修改），启用本机回环与 `dsh-app://` 桌面渲染源白名单、随机 `X-DSH-HUD-Token` 鉴权（支持通过 `DSH_HUD_CONTROL_TOKEN` 指定）、2 MB 请求体上限及配置字段白名单校验
-- 渲染窗口采用 `contextIsolation: true`、`nodeIntegration: false`、`sandbox: true`，仅通过 `runtime/preload.js` 暴露受控 IPC 接口
+- 配置统一保存在 `<appData>/dsh-hud/dsh-hud-config.json`，不写入插件包目录；首次升级自动迁移旧路径配置。
+- 不联网上报任何聊天或行为数据：全部事件仅在本机进程间通过 `127.0.0.1` 流转。
+- 本地控制接口监听 `127.0.0.1:52399`，启用本机回环与 `dsh-app://` 源白名单、随机 `X-DSH-HUD-Token` 鉴权、2 MB 请求体上限及字段白名单校验。
+
+---
 
 ## 环境变量
 
@@ -181,17 +144,22 @@ $env:DSH_HUD_SPAWN_DELAY_MS = "0"
 | `DSH_HUD_ELECTRON_MIRROR` | 未设置 | 置顶自定义镜像基址（支持 `http://` / `https://`） |
 | `HTTP_PROXY` / `HTTPS_PROXY` / `NO_PROXY` | 系统环境 | 自动下载运行时与测速时遵循的代理配置 |
 
+---
+
 ## 架构
 
 | 层 | 文件 | 职责 |
 | --- | --- | --- |
-| 宿主插件 | `lib/index.js` | 声明 `dsh.bundle`，监听 `session/event`，暴露 `/dsh-hud/state` 与 `/dsh-hud/control-info` |
-| 共享核心 | `lib/hud-core.cjs` | 统一配置读写与白名单校验、多屏坐标钳位、跨平台字体检索、本地控制服务与多会话事件队列 |
-| 进程内窗口 | `lib/inprocess.js` | 仅当宿主真在 Electron 主进程里跑插件时启用；当前桌面版宿主是 Node 模式，因此实际不走这条 |
-| 配置前端 | `lib/client.js` | 在 `settings.section` 注册设置页，支持测试气泡预览、头像压缩上传与断线自动重连 |
-| 运行时获取 | `lib/runtime-fetch.js` | 缺 Electron 时自动下载到 `~/.dsh/electron/`（测速 + 代理 + 断点续传 + SHA-256 校验 + 解压） |
-| 独立窗口 | `runtime/main.js` · `runtime/preload.js` · `runtime/index.html` | 桌面版实际路径：spawn 出来的独立透明窗口，隔离上下文桥接、拖拽与动画渲染都在这里 |
-| 单元测试 | `test/hud-core.test.mjs` · `test/runtime-fetch.test.mjs` | 基于 Node 内置 `node:test` 的核心逻辑与下载器测试 |
+| 宿主插件 | `lib/index.js` | 声明 `dsh.bundle`，监听 `session/event` 与 `approval/request` / `user-questions/request` waterfall，暴露 `/dsh-hud/state` 与 `/dsh-hud/control-info` |
+| 共享核心 | `lib/hud-core.cjs` | 配置校验与迁移、多屏坐标钳位、跨平台字体检索、本地控制服务、多会话事件队列与等待状态机 |
+| 进程内窗口 | `lib/inprocess.js` | 当宿主运行在 Electron 主进程内时直接建窗；桌面版 Node 模式下走独立窗口路径 |
+| 配置前端 | `lib/client.js` | 注入 `settings.section`，支持实时设置、头像压缩上传、测试/等待预览与自动重连 |
+| 运行时获取 | `lib/runtime-fetch.js` | 自动测速下载 Electron 到 `~/.dsh/electron/`（代理 + 断点续传 + SHA-256 校验） |
+| 独立窗口 | `runtime/main.js` · `runtime/preload.js` · `runtime/index.html` | 独立透明置顶窗口，安全隔离桥接、自由拖拽与气泡/脉冲强提醒渲染 |
+| 单元测试 | `test/hud-core.test.mjs` · `test/runtime-fetch.test.mjs` | 基于 Node 内置 `node:test` 的 20 项核心逻辑、等待态去重与下载器测试 |
+| 云端发布 | `.github/workflows/release.yml` | 推送 `main` 自动跑测，推送 `v*` 标签自动 `npm pack` 并发布 Release |
+
+---
 
 ## 开发与测试
 
