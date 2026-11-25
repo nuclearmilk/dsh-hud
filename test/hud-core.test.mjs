@@ -769,3 +769,82 @@ test('createEventStore summarizes subagent lifecycle (start + clean completion) 
   assert.equal(rootResult[0].payload.state, 'result');
   assert.equal(rootEnd.find((e) => e.kind === 'notify').payload.event.data.text, '根会话修复已完成');
 });
+
+test('createEventStore resolves DSH subagent names from parent subagent call/activation/preset and keeps active root workStatus', () => {
+  const emitted = [];
+  const store = createEventStore({
+    maxEvents: 60,
+    onEmit: (item) => emitted.push(item)
+  });
+
+  // 1. Root session starts, spawns subagent 'perm-watch5' via tool/call + activation result
+  const root = { id: 'root-5', header: { origin: 'root' } };
+  const child = {
+    id: 'child-5',
+    header: { origin: 'subagent', parentSession: 'root-5', agentPreset: 'explore' }
+  };
+
+  store.handleSessionEvent(root, { type: 'turn/start' });
+  store.handleSessionEvent(root, {
+    type: 'tool/call',
+    data: { name: 'subagent', callId: 'call-sub-5', arguments: JSON.stringify({ name: 'perm-watch5' }) }
+  });
+  const subToolResult = store.handleSessionEvent(root, {
+    type: 'tool/result',
+    data: {
+      callId: 'call-sub-5',
+      message: {
+        toolCallId: 'call-sub-5',
+        content: [{ type: 'text', text: JSON.stringify({ kind: 'activation', name: 'perm-watch5' }) }]
+      }
+    }
+  });
+  assert.equal(
+    subToolResult.some((e) => e.kind === 'workStatus' && e.payload.state === 'result'),
+    false
+  );
+
+  const beforeChildCount = emitted.length;
+  store.handleSessionEvent(child, { type: 'turn/start' });
+  store.handleSessionEvent(child, { type: 'tool/call', data: { name: 'pwsh', callId: 'c5-1' } });
+  store.handleSessionEvent(child, { type: 'tool/result', data: { callId: 'c5-1' } });
+  store.handleSessionEvent(child, {
+    type: 'assistant/message',
+    data: { message: { content: [{ type: 'text', text: 'SLEPT: yes\nESCALATION_RESULT: denied' }] } }
+  });
+  const childEnd = store.handleSessionEvent(child, { type: 'turn/end', data: { reason: 'done' } });
+
+  // Subagent never clobbered active root's workStatus
+  const childWorkEvents = emitted.slice(beforeChildCount).filter((e) => e.kind === 'workStatus');
+  assert.equal(childWorkEvents.length, 0);
+  assert.equal(store.getState(0).sections.workStatus.data.sessionId, 'root-5');
+  assert.equal(childEnd.find((e) => e.kind === 'notify').payload.event.data.text, '子代理 perm-watch5 已完成');
+
+  // 2. Activation result arriving after child turn/start (parent tool/call had no name) still names child
+  const childLate = {
+    id: 'child-late',
+    header: { origin: 'subagent', parentSession: 'root-5', agentPreset: 'explore' }
+  };
+  store.handleSessionEvent(childLate, { type: 'turn/start' });
+  store.handleSessionEvent(root, {
+    type: 'tool/result',
+    data: {
+      callId: 'call-sub-late',
+      message: {
+        toolCallId: 'call-sub-late',
+        content: [{ type: 'text', text: JSON.stringify({ kind: 'activation', name: 'perm-late' }) }]
+      }
+    }
+  });
+  const lateEnd = store.handleSessionEvent(childLate, { type: 'turn/end', data: { reason: 'done' } });
+  assert.equal(lateEnd.find((e) => e.kind === 'notify').payload.event.data.text, '子代理 perm-late 已完成');
+
+  // 3. Fallback to header.agentPreset when neither parent call nor activation provides a name
+  const childPreset = {
+    id: 'child-preset',
+    header: { origin: 'subagent', parentSession: 'root-6', agentPreset: 'reviewer' }
+  };
+  store.handleSessionEvent(childPreset, { type: 'turn/start' });
+  const presetEnd = store.handleSessionEvent(childPreset, { type: 'turn/end', data: { reason: 'done' } });
+  assert.equal(presetEnd.find((e) => e.kind === 'notify').payload.event.data.text, '子代理 reviewer 已完成');
+});
