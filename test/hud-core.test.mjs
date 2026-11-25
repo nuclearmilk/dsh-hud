@@ -705,3 +705,67 @@ test('createEventStore suppresses phantom waiting flashes on subagent and policy
   assert.equal(store.waitingCount, 1);
   assert.equal(emitted.some((e) => e.kind === 'waitingStatus' && e.payload.count === 1), true);
 });
+
+test('createEventStore summarizes subagent lifecycle (start + clean completion) without per-step spam or raw output', () => {
+  const emitted = [];
+  const store = createEventStore({
+    maxEvents: 40,
+    onEmit: (item) => emitted.push(item)
+  });
+
+  // 1. Subagent with name 'perm-watch4': only start busy + final summarized COMPLETED
+  const subNamed = { id: 'sub-watch4', header: { origin: 'subagent', name: 'perm-watch4' } };
+  store.handleSessionEvent(subNamed, { type: 'turn/start' });
+  store.handleSessionEvent(subNamed, { type: 'tool/call', data: { name: 'pwsh', callId: 'c1' } });
+  store.handleSessionEvent(subNamed, { type: 'tool/result', data: { callId: 'c1' } });
+  store.handleSessionEvent(subNamed, { type: 'tool/call', data: { name: 'read_file', callId: 'c2' } });
+  store.handleSessionEvent(subNamed, { type: 'tool/result', data: { callId: 'c2' } });
+  store.handleSessionEvent(subNamed, {
+    type: 'assistant/message',
+    data: { message: { content: [{ type: 'text', text: 'SLEPT: yes\nESCALATION_RESULT: denied' }] } }
+  });
+  store.handleSessionEvent(subNamed, { type: 'turn/end', data: { reason: 'done' } });
+
+  assert.equal(emitted.some((e) => e.kind === 'workStatus' && e.payload.state === 'working'), false);
+  assert.equal(emitted.some((e) => e.kind === 'workStatus' && e.payload.state === 'result'), false);
+  assert.equal(emitted[0].kind, 'workStatus');
+  assert.equal(emitted[0].payload.state, 'busy');
+  assert.match(emitted[0].payload.task, /perm-watch4/);
+
+  const notifyEvt = emitted.find((e) => e.kind === 'notify');
+  assert.ok(notifyEvt);
+  assert.equal(notifyEvt.payload.event.data.text, '子代理 perm-watch4 已完成');
+  assert.equal(notifyEvt.payload.event.data.text.includes('SLEPT'), false);
+
+  // 2. Unnamed subagent fallback + error/aborted summaries
+  const subUnnamed = { id: 'sub-unnamed', header: { origin: 'subagent' } };
+  store.handleSessionEvent(subUnnamed, { type: 'turn/start' });
+  const unnamedEnd = store.handleSessionEvent(subUnnamed, { type: 'turn/end', data: { reason: 'done' } });
+  assert.equal(unnamedEnd.find((e) => e.kind === 'notify').payload.event.data.text, '子代理 已完成');
+
+  const subErr = { id: 'sub-err', header: { origin: 'subagent', name: 'perm-err' } };
+  store.handleSessionEvent(subErr, { type: 'turn/start' });
+  const errEnd = store.handleSessionEvent(subErr, { type: 'turn/end', data: { reason: 'error' } });
+  assert.equal(errEnd.find((e) => e.kind === 'notify').payload.event.data.text, '子代理 perm-err 执行出错');
+
+  const subAbort = { id: 'sub-abort', header: { origin: 'subagent', name: 'perm-abort' } };
+  store.handleSessionEvent(subAbort, { type: 'turn/start' });
+  const abortEnd = store.handleSessionEvent(subAbort, { type: 'turn/end', data: { reason: 'aborted' } });
+  assert.equal(abortEnd.find((e) => e.kind === 'notify').payload.event.data.text, '子代理 perm-abort 已中止');
+
+  // 3. Root session still emits working, STEP DONE result, and real assistant text
+  const root = { id: 'root-main', header: { origin: 'root' } };
+  const rootStart = store.handleSessionEvent(root, { type: 'turn/start' });
+  const rootCall = store.handleSessionEvent(root, { type: 'tool/call', data: { name: 'read_file', callId: 'r1' } });
+  const rootResult = store.handleSessionEvent(root, { type: 'tool/result', data: { callId: 'r1' } });
+  store.handleSessionEvent(root, {
+    type: 'assistant/message',
+    data: { message: { content: [{ type: 'text', text: '根会话修复已完成' }] } }
+  });
+  const rootEnd = store.handleSessionEvent(root, { type: 'turn/end', data: { reason: 'done' } });
+
+  assert.equal(rootStart[0].payload.state, 'busy');
+  assert.equal(rootCall[0].payload.state, 'working');
+  assert.equal(rootResult[0].payload.state, 'result');
+  assert.equal(rootEnd.find((e) => e.kind === 'notify').payload.event.data.text, '根会话修复已完成');
+});
