@@ -10,6 +10,7 @@ const {
   CHANNELS,
   getControlPort,
   generateControlToken,
+  readStoredControlToken,
   writeStoredControlToken,
   isPidAlive,
   loadConfig,
@@ -27,11 +28,12 @@ let parentWatchTimer = null;
 let displayListenersBound = false;
 
 const CONTROL_PORT = getControlPort();
-const CONTROL_TOKEN = process.env.DSH_HUD_CONTROL_TOKEN || (() => {
+const CONTROL_TOKEN = process.env.DSH_HUD_CONTROL_TOKEN || readStoredControlToken() || (() => {
   const tok = generateControlToken();
   writeStoredControlToken(tok);
   return tok;
 })();
+const PUSH_MODE = process.env.DSH_HUD_PUSH_MODE === '1';
 const PARENT_PID = parseInt(process.env.DSH_HUD_PARENT_PID || '0', 10) || 0;
 
 // 独立的 app 名：让 userData 落到 %APPDATA%/dsh-hud
@@ -107,6 +109,7 @@ function startLocalControlServer() {
         });
       }
     },
+    onEvent: (item) => handlePushedEvent(item),
     onQuit: () => {
       setTimeout(() => {
         try { app.quit(); } catch (e) {}
@@ -227,6 +230,10 @@ function createWindow() {
     applyIgnoreMouseEvents();
     if (mainWindow && !mainWindow.isDestroyed()) {
       mainWindow.webContents.send(CHANNELS.CONFIG_UPDATED, hudConfig);
+      while (pendingPushedEvents.length > 0) {
+        const queued = pendingPushedEvents.shift();
+        forwardEventItem(queued);
+      }
     }
   });
 
@@ -236,7 +243,9 @@ function createWindow() {
 
   bindDragIpcOnce();
   startParentWatchdog();
-  startEventPolling();
+  if (!PUSH_MODE) {
+    startEventPolling();
+  }
 }
 
 // ── Parent PID Watchdog ──────────────────────────────────────────────────────
@@ -259,7 +268,26 @@ let lastCounter = 0;
 let lastWorkCounter = 0;
 let lastNotifyCounter = 0;
 let lastWaitingCounter = 0;
+let lastPushedSeq = 0;
+const pendingPushedEvents = [];
 let isPolling = false;
+
+function handlePushedEvent(item) {
+  if (!item || typeof item !== 'object') return;
+  if (typeof item.seq === 'number') {
+    if (item.seq <= lastPushedSeq) return;
+    lastPushedSeq = item.seq;
+    lastCounter = Math.max(lastCounter, item.seq);
+  }
+  if (mainWindow && !mainWindow.isDestroyed() && !mainWindow.webContents.isLoadingMainFrame()) {
+    forwardEventItem(item);
+  } else {
+    pendingPushedEvents.push(item);
+    if (pendingPushedEvents.length > 50) {
+      pendingPushedEvents.shift();
+    }
+  }
+}
 
 const ENV_DSH_PORT = parseInt(process.env.DSH_HUD_PORT || '0', 10) || 0;
 let currentDshPort = ENV_DSH_PORT || 56150;

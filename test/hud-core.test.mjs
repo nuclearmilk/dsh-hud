@@ -579,3 +579,88 @@ test('createEventStore preserves waiting session when another concurrent session
   assert.equal(store.activeCount, 1);
   assert.equal(store.waitingCount, 1);
 });
+
+test('createControlServer accepts authenticated POST /api/event and blocks unauthenticated/cross-origin requests', async () => {
+  const received = [];
+  const server = createControlServer({
+    token: 'push-secret',
+    getConfig: () => ({ ...DEFAULT_CONFIG }),
+    onConfigPatch: async () => ({ ...DEFAULT_CONFIG }),
+    onEvent: (item) => {
+      received.push(item);
+    }
+  });
+
+  await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
+  const { port } = server.address();
+
+  try {
+    // Missing or wrong token -> 401
+    const unauth = await httpReq({
+      port,
+      method: 'POST',
+      pathname: '/api/event',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ item: { kind: 'workStatus', seq: 1, payload: { state: 'working' } } })
+    });
+    assert.equal(unauth.status, 401);
+
+    // Untrusted Origin -> 403
+    const badOrigin = await httpReq({
+      port,
+      method: 'POST',
+      pathname: '/api/event',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-DSH-HUD-Token': 'push-secret',
+        Origin: 'https://evil.example'
+      },
+      body: JSON.stringify({ items: [{ kind: 'workStatus', seq: 2, payload: { state: 'working' } }] })
+    });
+    assert.equal(badOrigin.status, 403);
+
+    // Single item
+    const single = await httpReq({
+      port,
+      method: 'POST',
+      pathname: '/api/event',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-DSH-HUD-Token': 'push-secret'
+      },
+      body: JSON.stringify({ item: { kind: 'workStatus', seq: 1, payload: { state: 'working' } } })
+    });
+    assert.equal(single.status, 200);
+    assert.deepEqual(single.json, { ok: true, accepted: 1 });
+
+    // Batch items
+    const batch = await httpReq({
+      port,
+      method: 'POST',
+      pathname: '/api/event',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-DSH-HUD-Token': 'push-secret'
+      },
+      body: JSON.stringify({
+        items: [
+          { kind: 'notify', seq: 2, payload: { event: { type: 'turn/start' } } },
+          { kind: 'waitingStatus', seq: 3, payload: { count: 1, items: [] } }
+        ]
+      })
+    });
+    assert.equal(batch.status, 200);
+    assert.deepEqual(batch.json, { ok: true, accepted: 2 });
+
+    assert.deepEqual(
+      received.map((item) => [item.kind, item.seq]),
+      [
+        ['workStatus', 1],
+        ['notify', 2],
+        ['waitingStatus', 3]
+      ]
+    );
+  } finally {
+    await new Promise((resolve) => server.close(resolve));
+  }
+});

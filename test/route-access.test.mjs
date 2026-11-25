@@ -1,10 +1,11 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { EventEmitter } from 'node:events';
+import net from 'node:net';
 import hudCore from '../lib/hud-core.cjs';
-import { inject, checkRequestAccess, registerHudRoutes } from '../lib/index.js';
+import { inject, checkRequestAccess, registerHudRoutes, createHudEventPusher } from '../lib/index.js';
 
-const { createEventStore } = hudCore;
+const { createEventStore, createControlServer, DEFAULT_CONFIG } = hudCore;
 
 function createMockRes() {
   const res = new EventEmitter();
@@ -123,4 +124,53 @@ test('HTTP routes serve control-info, state, and 404 when requestRejection admit
   const notFoundRes = createMockRes();
   await handler({ url: '/dsh-hud/unknown', method: 'GET', headers: {} }, notFoundRes);
   assert.equal(notFoundRes.statusCode, 404);
+});
+
+test('createHudEventPusher buffers events while control server is offline and flushes in order once ready', async () => {
+  const probeServer = net.createServer();
+  await new Promise((resolve) => probeServer.listen(0, '127.0.0.1', resolve));
+  const { port } = probeServer.address();
+  await new Promise((resolve) => probeServer.close(resolve));
+
+  const received = [];
+  const pusher = createHudEventPusher({
+    port,
+    getToken: () => 'live-hud-token'
+  });
+
+  // Enqueue while no server is listening yet
+  pusher.enqueue({ kind: 'workStatus', seq: 10, payload: { state: 'working', task: 'step 1' } });
+  pusher.enqueue({ kind: 'waitingStatus', seq: 11, payload: { count: 1, items: [{ id: 'w1' }] } });
+  await new Promise((r) => setTimeout(r, 80));
+  assert.equal(pusher.pendingCount, 2);
+
+  const server = createControlServer({
+    token: 'live-hud-token',
+    getConfig: () => ({ ...DEFAULT_CONFIG }),
+    onConfigPatch: async () => ({ ...DEFAULT_CONFIG }),
+    onEvent: (item) => {
+      received.push(item);
+    }
+  });
+
+  await new Promise((resolve) => server.listen(port, '127.0.0.1', resolve));
+  try {
+    pusher.notifyReady();
+    for (let i = 0; i < 30 && received.length < 2; i++) {
+      await new Promise((r) => setTimeout(r, 30));
+    }
+
+    assert.equal(pusher.pendingCount, 0);
+    assert.deepEqual(
+      received.map((item) => item.seq),
+      [10, 11]
+    );
+
+    pusher.dispose();
+    pusher.enqueue({ kind: 'workStatus', seq: 12, payload: { state: 'idle' } });
+    assert.equal(pusher.pendingCount, 0);
+  } finally {
+    pusher.dispose();
+    await new Promise((resolve) => server.close(resolve));
+  }
 });
