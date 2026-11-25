@@ -664,3 +664,44 @@ test('createControlServer accepts authenticated POST /api/event and blocks unaut
     await new Promise((resolve) => server.close(resolve));
   }
 });
+
+test('createEventStore suppresses phantom waiting flashes on subagent and policy=never sessions while respecting policy changes', () => {
+  const emitted = [];
+  const store = createEventStore({
+    maxEvents: 40,
+    onEmit: (item) => emitted.push(item)
+  });
+
+  // 1. Subagent with explicit header.origin = 'subagent'
+  const sub1 = { id: 'sub-1', header: { origin: 'subagent' } };
+  store.handleSessionEvent(sub1, { type: 'approval/policy', data: { policy: 'never', source: 'delegation' } });
+  store.handleSessionEvent(sub1, { type: 'approval/asked', data: { id: 'appr-sub-1', toolName: 'pwsh', reason: 'escalate' } });
+  store.handleSessionEvent(sub1, {
+    type: 'tool/call',
+    data: { name: 'ask_user_question', callId: 'q-sub-1', arguments: JSON.stringify({ questions: [{ question: 'q' }] }) }
+  });
+  store.handleSessionEvent(sub1, { type: 'tool/call', data: { name: 'exit_plan_mode', callId: 'p-sub-1' } });
+  assert.equal(store.waitingCount, 0);
+  assert.equal(emitted.some((e) => e.kind === 'waitingStatus'), false);
+
+  // 2. Delegated session where subsequent events omit session.header
+  store.handleSessionEvent({ id: 'sub-2' }, { type: 'approval/policy', data: { policy: 'never', source: 'delegation' } });
+  store.handleSessionEvent({ id: 'sub-2' }, { type: 'approval/asked', data: { id: 'appr-sub-2', toolName: 'pwsh' } });
+  store.handleSessionEvent({ id: 'sub-2' }, {
+    type: 'tool/call',
+    data: { name: 'ask_user_question', callId: 'q-sub-2', arguments: '{}' }
+  });
+  assert.equal(store.waitingCount, 0);
+  assert.equal(emitted.some((e) => e.kind === 'waitingStatus'), false);
+
+  // 3. Root session: suppressed while policy === 'never', active once policy switches to 'on-request'
+  const root = { id: 'root-1', header: { origin: 'root' } };
+  store.handleSessionEvent(root, { type: 'approval/policy', data: { policy: 'never', source: 'user' } });
+  store.handleSessionEvent(root, { type: 'approval/asked', data: { id: 'appr-root-never', toolName: 'bash' } });
+  assert.equal(store.waitingCount, 0);
+
+  store.handleSessionEvent(root, { type: 'approval/policy', data: { policy: 'on-request', source: 'user' } });
+  store.handleSessionEvent(root, { type: 'approval/asked', data: { id: 'appr-root-live', toolName: 'bash', reason: '需要批准' } });
+  assert.equal(store.waitingCount, 1);
+  assert.equal(emitted.some((e) => e.kind === 'waitingStatus' && e.payload.count === 1), true);
+});
